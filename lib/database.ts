@@ -58,6 +58,7 @@ export function saveMetricSample(sample: MetricSample): void {
     sample.memoryUsedBytes,
     sample.memoryTotalBytes,
   );
+  console.log(`Saved metric sample: ${JSON.stringify(sample)}`);
 }
 
 /** Returns the most recent samples in chronological order. */
