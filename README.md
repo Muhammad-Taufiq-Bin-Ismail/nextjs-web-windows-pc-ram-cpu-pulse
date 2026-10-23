@@ -22,9 +22,10 @@ Open <http://localhost:3000>. In production, run `npm run build` followed by
 
 The server records system and per-process metrics every 3 seconds. The browser
 dashboard refreshes every 5 seconds, displays up to 120 system samples, and lists
-the latest snapshot of all running processes, sorted by CPU usage. Per-process
-snapshots are retained for 15 minutes. The SQLite file is stored at
-`data/pc-status.sqlite`.
+the latest snapshot of all running processes, sorted by CPU usage. Task name and
+PID columns can be sorted by clicking their headers. Each process row includes
+CPU and RAM trend charts with up to 120 points. Per-process snapshots are
+retained for 15 minutes. The SQLite file is stored at `data/pc-status.sqlite`.
 
 CPU and RAM values describe the host running the Next.js server, not the
 computer viewing the page. Per-process CPU percentages are normalized across

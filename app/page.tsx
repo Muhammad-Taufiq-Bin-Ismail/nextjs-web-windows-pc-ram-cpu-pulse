@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MetricChart } from "./components/MetricChart";
+import { ProcessSparkline } from "./components/ProcessSparkline";
 
 type MetricSample = {
   sampledAt: number;
@@ -20,11 +21,25 @@ type ProcessMetric = {
   memoryUsage: number;
 };
 
+type ProcessHistory = {
+  pid: number;
+  startedAt: string;
+  samples: Array<{
+    sampledAt: number;
+    cpuUsage: number;
+    memoryUsage: number;
+  }>;
+};
+
 type MetricsResponse = {
   samples: MetricSample[];
   processes: ProcessMetric[];
+  processHistory: ProcessHistory[];
   lastUpdated: number | null;
 };
+
+type ProcessSortColumn = "name" | "pid" | "cpuUsage";
+type SortDirection = "ascending" | "descending";
 
 /** Formats a byte count as gibibytes for the dashboard. */
 function formatBytes(bytes: number): string {
@@ -42,9 +57,13 @@ export default function DashboardPage() {
   const [data, setData] = useState<MetricsResponse>({
     samples: [],
     processes: [],
+    processHistory: [],
     lastUpdated: null,
   });
   const [error, setError] = useState<string | null>(null);
+  const [sortColumn, setSortColumn] = useState<ProcessSortColumn>("cpuUsage");
+  const [sortDirection, setSortDirection] =
+    useState<SortDirection>("descending");
 
   // Fetch metrics immediately, then refresh every five seconds until unmounted.
   useEffect(() => {
@@ -87,6 +106,38 @@ export default function DashboardPage() {
       sampledAt: sample.sampledAt,
       value: sample[key],
     }));
+  const processHistoryByKey = new Map(
+    data.processHistory.map((history) => [
+      `${history.pid}-${history.startedAt}`,
+      history,
+    ]),
+  );
+  const sortedProcesses = [...data.processes].sort((left, right) => {
+    let comparison: number;
+    if (sortColumn === "name") {
+      comparison = left.name.localeCompare(right.name, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    } else if (sortColumn === "pid") {
+      comparison = left.pid - right.pid;
+    } else {
+      comparison = left.cpuUsage - right.cpuUsage;
+    }
+    return sortDirection === "ascending" ? comparison : -comparison;
+  });
+
+  /** Sorts the selected process column, toggling direction on repeated clicks. */
+  const changeProcessSort = (column: "name" | "pid") => {
+    if (sortColumn === column) {
+      setSortDirection((direction) =>
+        direction === "ascending" ? "descending" : "ascending",
+      );
+      return;
+    }
+    setSortColumn(column);
+    setSortDirection("ascending");
+  };
 
   return (
     <main className="dashboard">
@@ -230,37 +281,99 @@ export default function DashboardPage() {
         </div>
         <p className="process-description">
           CPU is normalized across all logical cores. RAM shows each process&apos;s
-          working set and share of system memory.
+          working set and share of system memory. Trend charts use up to 120
+          samples per process.
         </p>
         <div className="process-table-wrap">
           <table className="process-table">
             <thead>
               <tr>
-                <th scope="col">Task name</th>
-                <th scope="col">PID</th>
+                <th
+                  aria-sort={
+                    sortColumn === "name" ? sortDirection : "none"
+                  }
+                  scope="col"
+                >
+                  <button
+                    className="process-sort-button"
+                    onClick={() => changeProcessSort("name")}
+                    type="button"
+                  >
+                    Task name
+                    {sortColumn === "name" && (
+                      <span aria-hidden="true">
+                        {sortDirection === "ascending" ? " ↑" : " ↓"}
+                      </span>
+                    )}
+                  </button>
+                </th>
+                <th
+                  aria-sort={sortColumn === "pid" ? sortDirection : "none"}
+                  scope="col"
+                >
+                  <button
+                    className="process-sort-button"
+                    onClick={() => changeProcessSort("pid")}
+                    type="button"
+                  >
+                    PID
+                    {sortColumn === "pid" && (
+                      <span aria-hidden="true">
+                        {sortDirection === "ascending" ? " ↑" : " ↓"}
+                      </span>
+                    )}
+                  </button>
+                </th>
                 <th scope="col">CPU</th>
                 <th scope="col">RAM</th>
                 <th scope="col">RAM %</th>
+                <th scope="col">CPU trend</th>
+                <th scope="col">RAM trend</th>
               </tr>
             </thead>
             <tbody>
-              {data.processes.map((process) => (
-                <tr
-                  key={`${process.pid}-${process.startedAt}`}
-                  title={`Started ${process.startedAt || "unknown"}`}
-                >
-                  <td className="process-name">{process.name}</td>
-                  <td className="process-pid">{process.pid}</td>
-                  <td className="process-cpu">
-                    {process.cpuUsage.toFixed(1)}%
-                  </td>
-                  <td>{formatProcessMemory(process.memoryUsedBytes)}</td>
-                  <td>{process.memoryUsage.toFixed(2)}%</td>
-                </tr>
-              ))}
+              {sortedProcesses.map((process) => {
+                const history = processHistoryByKey.get(
+                  `${process.pid}-${process.startedAt}`,
+                );
+                return (
+                  <tr
+                    key={`${process.pid}-${process.startedAt}`}
+                    title={`Started ${process.startedAt || "unknown"}`}
+                  >
+                    <td className="process-name">{process.name}</td>
+                    <td className="process-pid">{process.pid}</td>
+                    <td className="process-cpu">
+                      {process.cpuUsage.toFixed(1)}%
+                    </td>
+                    <td>{formatProcessMemory(process.memoryUsedBytes)}</td>
+                    <td>{process.memoryUsage.toFixed(2)}%</td>
+                    <td>
+                      <ProcessSparkline
+                        color="#7c6cf2"
+                        label={`${process.name} PID ${process.pid} CPU`}
+                        values={
+                          history?.samples.map((sample) => sample.cpuUsage) ??
+                          []
+                        }
+                      />
+                    </td>
+                    <td>
+                      <ProcessSparkline
+                        color="#18b89a"
+                        label={`${process.name} PID ${process.pid} RAM`}
+                        values={
+                          history?.samples.map((sample) => sample.memoryUsage) ??
+                          []
+                        }
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
               {data.processes.length === 0 && (
                 <tr>
-                  <td className="process-empty" colSpan={5}>
+                  <td className="process-empty" colSpan={7}>
                     Waiting for the first process snapshot...
                   </td>
                 </tr>

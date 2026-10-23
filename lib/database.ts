@@ -19,6 +19,16 @@ export type ProcessMetric = {
   memoryUsage: number;
 };
 
+export type ProcessHistory = {
+  pid: number;
+  startedAt: string;
+  samples: Array<{
+    sampledAt: number;
+    cpuUsage: number;
+    memoryUsage: number;
+  }>;
+};
+
 const databasePath = join(process.cwd(), "data", "pc-status.sqlite");
 mkdirSync(dirname(databasePath), { recursive: true });
 
@@ -99,6 +109,26 @@ const latestProcessSamples = database.prepare(`
   WHERE sampled_at = (SELECT MAX(sampled_at) FROM process_snapshots)
   ORDER BY cpu_usage DESC, memory_used_bytes DESC
 `);
+const latestProcessHistory = database.prepare(`
+  SELECT
+    history.sampled_at AS sampledAt,
+    history.pid,
+    history.started_at AS startedAt,
+    history.cpu_usage AS cpuUsage,
+    history.memory_usage AS memoryUsage
+  FROM process_samples AS history
+  WHERE history.sampled_at IN (
+    SELECT sampled_at FROM process_snapshots ORDER BY sampled_at DESC LIMIT ?
+  )
+  AND EXISTS (
+    SELECT 1
+    FROM process_samples AS current
+    WHERE current.sampled_at = (SELECT MAX(sampled_at) FROM process_snapshots)
+      AND current.pid = history.pid
+      AND current.started_at = history.started_at
+  )
+  ORDER BY history.pid, history.started_at, history.sampled_at
+`);
 
 /** Persists one CPU and memory measurement in the local SQLite database. */
 export function saveMetricSample(sample: MetricSample): void {
@@ -149,4 +179,31 @@ export function getLatestMetricSamples(limit = 120): MetricSample[] {
 /** Returns per-process metrics from the latest recorded snapshot. */
 export function getLatestProcessSamples(): ProcessMetric[] {
   return latestProcessSamples.all() as ProcessMetric[];
+}
+
+/** Returns per-process CPU and RAM history from the latest snapshots. */
+export function getLatestProcessHistory(limit = 120): ProcessHistory[] {
+  const rows = latestProcessHistory.all(limit) as Array<{
+    sampledAt: number;
+    pid: number;
+    startedAt: string;
+    cpuUsage: number;
+    memoryUsage: number;
+  }>;
+  const historyByProcess = new Map<string, ProcessHistory>();
+
+  for (const row of rows) {
+    const key = `${row.pid}:${row.startedAt}`;
+    let history = historyByProcess.get(key);
+    if (!history) {
+      history = { pid: row.pid, startedAt: row.startedAt, samples: [] };
+      historyByProcess.set(key, history);
+    }
+    history.samples.push({
+      sampledAt: row.sampledAt,
+      cpuUsage: row.cpuUsage,
+      memoryUsage: row.memoryUsage,
+    });
+  }
+  return Array.from(historyByProcess.values());
 }
