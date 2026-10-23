@@ -22,7 +22,7 @@ type RawProcess = {
 };
 
 type RawProcessSnapshot = {
-  cpuSpeedMhz: number;
+  cpuSpeedGhz: number;
   processes: RawProcess[];
 };
 
@@ -32,7 +32,24 @@ type PreviousProcessSample = {
 
 const powershellProcessSnapshot = `
 $ErrorActionPreference = 'Stop'
-$cpuSpeedMhz = [double]((Get-CimInstance -ClassName Win32_Processor | Measure-Object -Property CurrentClockSpeed -Average).Average)
+$MaxSpeed = [double]((Get-CimInstance Win32_Processor | Measure-Object -Property MaxClockSpeed -Average).Average)
+$PerfPercentage = $null
+try {
+  $PerfPercentage = (Get-Counter -Counter "\\Processor Information(_Total)\\% Processor Performance" -ErrorAction Stop).CounterSamples[0].CookedValue
+} catch {
+  $PerfPercentage = $null
+}
+if (-not $PerfPercentage) {
+  try {
+    $PerfPercentage = (Get-Counter -Counter "\\Processor(_Total)\\% of Maximum Frequency" -ErrorAction Stop).CounterSamples[0].CookedValue
+  } catch {
+    $PerfPercentage = $null
+  }
+}
+if (-not $MaxSpeed -or -not $PerfPercentage) {
+  throw 'Unable to read the current processor clock speed.'
+}
+$CurrentSpeedGHz = [Math]::Round(($MaxSpeed * ($PerfPercentage / 100)) / 1000, 2)
 $processes = @(Get-CimInstance -ClassName Win32_Process | ForEach-Object {
   [pscustomobject]@{
     pid = [int]$_.ProcessId
@@ -43,7 +60,7 @@ $processes = @(Get-CimInstance -ClassName Win32_Process | ForEach-Object {
   }
 })
 [pscustomobject]@{
-  cpuSpeedMhz = $cpuSpeedMhz
+  cpuSpeedGhz = $CurrentSpeedGHz
   processes = $processes
 } | ConvertTo-Json -Depth 4 -Compress
 `;
@@ -81,8 +98,9 @@ async function getRawProcesses(): Promise<RawProcessSnapshot> {
   const rawProcesses = snapshot.processes;
   const processes = Array.isArray(rawProcesses) ? rawProcesses : [rawProcesses];
   if (
-    typeof snapshot.cpuSpeedMhz !== "number" ||
-    !Number.isFinite(snapshot.cpuSpeedMhz)
+    typeof snapshot.cpuSpeedGhz !== "number" ||
+    !Number.isFinite(snapshot.cpuSpeedGhz) ||
+    snapshot.cpuSpeedGhz <= 0
   ) {
     throw new Error("Windows returned an invalid CPU speed reading.");
   }
@@ -106,7 +124,7 @@ async function getRawProcesses(): Promise<RawProcessSnapshot> {
     throw new Error("Windows returned an invalid process metrics snapshot.");
   }
   return {
-    cpuSpeedMhz: snapshot.cpuSpeedMhz,
+    cpuSpeedGhz: snapshot.cpuSpeedGhz,
     processes,
   };
 }
@@ -147,7 +165,7 @@ export function startMetricsCollector(): void {
       saveMetricSample({
         sampledAt,
         cpuUsage: Number(cpuUsage.toFixed(2)),
-        cpuSpeedMhz: rawSnapshot.cpuSpeedMhz,
+        cpuSpeedMhz: rawSnapshot.cpuSpeedGhz * 1_000,
         memoryUsage: Number(memoryUsage.toFixed(2)),
         memoryUsedBytes,
         memoryTotalBytes,
