@@ -6,6 +6,7 @@ const collectorGlobal = globalThis as typeof globalThis & {
   pcStatusCollectorStarted?: boolean;
 };
 
+/** Totals CPU time counters across all processor cores. */
 function getCpuTimes() {
   return os.cpus().reduce(
     (totals, cpu) => {
@@ -19,6 +20,7 @@ function getCpuTimes() {
   );
 }
 
+/** Starts the recurring system metrics collector once per server process. */
 export function startMetricsCollector(): void {
   if (collectorGlobal.pcStatusCollectorStarted) {
     return;
@@ -27,6 +29,7 @@ export function startMetricsCollector(): void {
 
   let previousCpuTimes = getCpuTimes();
 
+  /** Measures current CPU and memory usage and saves a sample. */
   const sample = () => {
     try {
       const currentCpuTimes = getCpuTimes();

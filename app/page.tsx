@@ -16,11 +16,13 @@ type MetricsResponse = {
   lastUpdated: number | null;
 };
 
+/** Formats a byte count as gibibytes for the dashboard. */
 function formatBytes(bytes: number): string {
   const gibibytes = bytes / 1024 ** 3;
   return `${gibibytes.toFixed(1)} GB`;
 }
 
+/** Renders the live CPU and memory monitoring dashboard. */
 export default function DashboardPage() {
   const [data, setData] = useState<MetricsResponse>({
     samples: [],
@@ -28,9 +30,11 @@ export default function DashboardPage() {
   });
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch metrics immediately, then refresh every five seconds until unmounted.
   useEffect(() => {
     let active = true;
 
+    /** Loads the latest metrics and updates the dashboard or its error state. */
     const refresh = async () => {
       try {
         const response = await fetch("/api/metrics", { cache: "no-store" });
@@ -53,6 +57,7 @@ export default function DashboardPage() {
 
     void refresh();
     const interval = window.setInterval(() => void refresh(), 5_000);
+    // Prevent pending updates and stop polling after the dashboard unmounts.
     return () => {
       active = false;
       window.clearInterval(interval);
@@ -60,6 +65,7 @@ export default function DashboardPage() {
   }, []);
 
   const latestSample = data.samples.at(-1);
+  /** Converts samples into the chart's timestamp-and-value format. */
   const chartSamples = (key: "cpuUsage" | "memoryUsage") =>
     data.samples.map((sample) => ({
       sampledAt: sample.sampledAt,

@@ -10,6 +10,7 @@ const padding = { top: 16, right: 18, bottom: 34, left: 42 };
 const plotWidth = chartWidth - padding.left - padding.right;
 const plotHeight = chartHeight - padding.top - padding.bottom;
 
+/** Renders resource usage samples as a responsive SVG line chart. */
 export function MetricChart({ color, label, samples }: MetricChartProps) {
   const points = samples.map((sample, index) => {
     const x =

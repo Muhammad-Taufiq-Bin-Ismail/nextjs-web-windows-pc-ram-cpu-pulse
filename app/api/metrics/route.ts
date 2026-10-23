@@ -4,6 +4,7 @@ import { getLatestMetricSamples } from "../../../lib/database";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Returns the latest saved metric samples without allowing response caching. */
 export function GET() {
   const samples = getLatestMetricSamples();
   return NextResponse.json(

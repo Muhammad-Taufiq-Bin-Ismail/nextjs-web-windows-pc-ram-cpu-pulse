@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description: "Live CPU and memory monitoring dashboard",
 };
 
+/** Provides shared document metadata, styles, and markup for application pages. */
 export default function RootLayout({
   children,
 }: Readonly<{

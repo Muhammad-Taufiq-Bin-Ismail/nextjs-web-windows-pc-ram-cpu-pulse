@@ -49,6 +49,7 @@ const latestSamples = database.prepare(`
   ORDER BY sampled_at ASC
 `);
 
+/** Persists one CPU and memory measurement in the local SQLite database. */
 export function saveMetricSample(sample: MetricSample): void {
   insertSample.run(
     sample.sampledAt,
@@ -59,6 +60,7 @@ export function saveMetricSample(sample: MetricSample): void {
   );
 }
 
+/** Returns the most recent samples in chronological order. */
 export function getLatestMetricSamples(limit = 120): MetricSample[] {
   return latestSamples.all(limit) as MetricSample[];
 }
