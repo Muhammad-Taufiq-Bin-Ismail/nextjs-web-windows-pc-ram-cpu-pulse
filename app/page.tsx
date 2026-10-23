@@ -11,8 +11,18 @@ type MetricSample = {
   memoryTotalBytes: number;
 };
 
+type ProcessMetric = {
+  pid: number;
+  name: string;
+  startedAt: string;
+  cpuUsage: number;
+  memoryUsedBytes: number;
+  memoryUsage: number;
+};
+
 type MetricsResponse = {
   samples: MetricSample[];
+  processes: ProcessMetric[];
   lastUpdated: number | null;
 };
 
@@ -22,10 +32,16 @@ function formatBytes(bytes: number): string {
   return `${gibibytes.toFixed(1)} GB`;
 }
 
+/** Formats per-process memory in megabytes for the process table. */
+function formatProcessMemory(bytes: number): string {
+  return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
+
 /** Renders the live CPU and memory monitoring dashboard. */
 export default function DashboardPage() {
   const [data, setData] = useState<MetricsResponse>({
     samples: [],
+    processes: [],
     lastUpdated: null,
   });
   const [error, setError] = useState<string | null>(null);
@@ -200,6 +216,58 @@ export default function DashboardPage() {
             <span className="chart-period">Last 6 minutes</span>
           </div>
         </article>
+      </section>
+
+      <section aria-label="Per-process CPU and RAM usage" className="process-card">
+        <div className="process-heading">
+          <div>
+            <p className="eyebrow">RUNNING TASKS</p>
+            <h2>Process usage</h2>
+          </div>
+          <span className="process-count">
+            {data.processes.length} processes
+          </span>
+        </div>
+        <p className="process-description">
+          CPU is normalized across all logical cores. RAM shows each process&apos;s
+          working set and share of system memory.
+        </p>
+        <div className="process-table-wrap">
+          <table className="process-table">
+            <thead>
+              <tr>
+                <th scope="col">Task name</th>
+                <th scope="col">PID</th>
+                <th scope="col">CPU</th>
+                <th scope="col">RAM</th>
+                <th scope="col">RAM %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.processes.map((process) => (
+                <tr
+                  key={`${process.pid}-${process.startedAt}`}
+                  title={`Started ${process.startedAt || "unknown"}`}
+                >
+                  <td className="process-name">{process.name}</td>
+                  <td className="process-pid">{process.pid}</td>
+                  <td className="process-cpu">
+                    {process.cpuUsage.toFixed(1)}%
+                  </td>
+                  <td>{formatProcessMemory(process.memoryUsedBytes)}</td>
+                  <td>{process.memoryUsage.toFixed(2)}%</td>
+                </tr>
+              ))}
+              {data.processes.length === 0 && (
+                <tr>
+                  <td className="process-empty" colSpan={5}>
+                    Waiting for the first process snapshot...
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <footer className="page-footer">

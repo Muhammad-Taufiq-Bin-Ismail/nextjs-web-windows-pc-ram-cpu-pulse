@@ -10,6 +10,15 @@ export type MetricSample = {
   memoryTotalBytes: number;
 };
 
+export type ProcessMetric = {
+  pid: number;
+  name: string;
+  startedAt: string;
+  cpuUsage: number;
+  memoryUsedBytes: number;
+  memoryUsage: number;
+};
+
 const databasePath = join(process.cwd(), "data", "pc-status.sqlite");
 mkdirSync(dirname(databasePath), { recursive: true });
 
@@ -25,6 +34,21 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS metric_samples_sampled_at
     ON metric_samples (sampled_at);
+  CREATE TABLE IF NOT EXISTS process_snapshots (
+    sampled_at INTEGER PRIMARY KEY
+  );
+  CREATE TABLE IF NOT EXISTS process_samples (
+    sampled_at INTEGER NOT NULL,
+    pid INTEGER NOT NULL,
+    started_at TEXT NOT NULL,
+    task_name TEXT NOT NULL,
+    cpu_usage REAL NOT NULL,
+    memory_used_bytes INTEGER NOT NULL,
+    memory_usage REAL NOT NULL,
+    PRIMARY KEY (sampled_at, pid, started_at)
+  );
+  CREATE INDEX IF NOT EXISTS process_samples_sampled_at
+    ON process_samples (sampled_at);
 `);
 
 const insertSample = database.prepare(`
@@ -49,6 +73,33 @@ const latestSamples = database.prepare(`
   ORDER BY sampled_at ASC
 `);
 
+const insertProcessSnapshot = database.prepare(
+  "INSERT INTO process_snapshots (sampled_at) VALUES (?)",
+);
+const insertProcessSample = database.prepare(`
+  INSERT INTO process_samples (
+    sampled_at, pid, started_at, task_name, cpu_usage, memory_used_bytes, memory_usage
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+const deleteOldProcessSamples = database.prepare(
+  "DELETE FROM process_samples WHERE sampled_at < ?",
+);
+const deleteOldProcessSnapshots = database.prepare(
+  "DELETE FROM process_snapshots WHERE sampled_at < ?",
+);
+const latestProcessSamples = database.prepare(`
+  SELECT
+    pid,
+    task_name AS name,
+    started_at AS startedAt,
+    cpu_usage AS cpuUsage,
+    memory_used_bytes AS memoryUsedBytes,
+    memory_usage AS memoryUsage
+  FROM process_samples
+  WHERE sampled_at = (SELECT MAX(sampled_at) FROM process_snapshots)
+  ORDER BY cpu_usage DESC, memory_used_bytes DESC
+`);
+
 /** Persists one CPU and memory measurement in the local SQLite database. */
 export function saveMetricSample(sample: MetricSample): void {
   insertSample.run(
@@ -61,7 +112,41 @@ export function saveMetricSample(sample: MetricSample): void {
   console.log(`Saved metric sample: ${JSON.stringify(sample)}`);
 }
 
+/** Saves one complete process snapshot and removes snapshots older than 15 minutes. */
+export function saveProcessSamples(
+  sampledAt: number,
+  samples: ProcessMetric[],
+): void {
+  database.exec("BEGIN");
+  try {
+    insertProcessSnapshot.run(sampledAt);
+    for (const sample of samples) {
+      insertProcessSample.run(
+        sampledAt,
+        sample.pid,
+        sample.startedAt,
+        sample.name,
+        sample.cpuUsage,
+        sample.memoryUsedBytes,
+        sample.memoryUsage,
+      );
+    }
+    const retentionCutoff = sampledAt - 15 * 60 * 1_000;
+    deleteOldProcessSamples.run(retentionCutoff);
+    deleteOldProcessSnapshots.run(retentionCutoff);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 /** Returns the most recent samples in chronological order. */
 export function getLatestMetricSamples(limit = 120): MetricSample[] {
   return latestSamples.all(limit) as MetricSample[];
+}
+
+/** Returns per-process metrics from the latest recorded snapshot. */
+export function getLatestProcessSamples(): ProcessMetric[] {
+  return latestProcessSamples.all() as ProcessMetric[];
 }
