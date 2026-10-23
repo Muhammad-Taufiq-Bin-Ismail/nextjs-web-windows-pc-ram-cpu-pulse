@@ -26,6 +26,8 @@ the latest snapshot of all running processes, sorted by CPU usage. Task name and
 PID columns can be sorted by clicking their headers. Each process row includes
 CPU and RAM trend charts with up to 120 points. Per-process snapshots are
 retained for 15 minutes. The SQLite file is stored at `data/pc-status.sqlite`.
+Use the dashboard header toggle to switch between light and dark themes; the
+selected theme is saved in browser local storage.
 
 CPU and RAM values describe the host running the Next.js server, not the
 computer viewing the page. Per-process CPU percentages are normalized across

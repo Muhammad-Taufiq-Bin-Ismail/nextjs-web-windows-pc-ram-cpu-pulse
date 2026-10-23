@@ -40,6 +40,34 @@ a {
   border-bottom: 1px solid #e9edf2;
 }
 
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid #e4e9f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #617084;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.theme-toggle:hover {
+  border-color: #cbd3df;
+  color: #273447;
+}
+
+.theme-toggle span:first-child {
+  font-size: 15px;
+  line-height: 1;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -694,6 +722,149 @@ h2 {
 
 .footer-separator {
   padding: 0 3px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] body {
+  background: #111827;
+  color: #e6ebf2;
+}
+
+:root[data-theme="dark"] .topbar {
+  border-color: #2a3545;
+}
+
+:root[data-theme="dark"] .theme-toggle,
+:root[data-theme="dark"] .stat-card,
+:root[data-theme="dark"] .chart-card,
+:root[data-theme="dark"] .range-card,
+:root[data-theme="dark"] .process-card,
+:root[data-theme="dark"] .selected-process-card {
+  border-color: #2c394a;
+  background: #1a2432;
+}
+
+:root[data-theme="dark"] .theme-toggle {
+  color: #c0cad8;
+}
+
+:root[data-theme="dark"] .theme-toggle:hover {
+  border-color: #536176;
+  background: #222f40;
+  color: #fff;
+}
+
+:root[data-theme="dark"] .brand {
+  color: #edf1f7;
+}
+
+:root[data-theme="dark"] .brand-light,
+:root[data-theme="dark"] .live-status,
+:root[data-theme="dark"] .eyebrow,
+:root[data-theme="dark"] .refresh-label,
+:root[data-theme="dark"] .subtitle,
+:root[data-theme="dark"] .process-count,
+:root[data-theme="dark"] .range-description,
+:root[data-theme="dark"] .process-description,
+:root[data-theme="dark"] .range-result-label,
+:root[data-theme="dark"] .page-footer,
+:root[data-theme="dark"] .chart-legend,
+:root[data-theme="dark"] .chart-period,
+:root[data-theme="dark"] .stat-foot {
+  color: #9aa8bb;
+}
+
+:root[data-theme="dark"] .stat-label,
+:root[data-theme="dark"] .stat-value span,
+:root[data-theme="dark"] .chart-empty,
+:root[data-theme="dark"] .snapshot-message {
+  color: #a9b5c5;
+}
+
+:root[data-theme="dark"] .stat-meter {
+  background: #2b3747;
+}
+
+:root[data-theme="dark"] .chart-grid {
+  stroke: #2b3747;
+}
+
+:root[data-theme="dark"] .chart-axis-label {
+  fill: #96a4b7;
+}
+
+:root[data-theme="dark"] .chart-hover-line {
+  stroke: #9ba9ba;
+}
+
+:root[data-theme="dark"] .chart-tooltip {
+  border-color: #39475a;
+  background: rgb(31 43 58 / 97%);
+  color: #bdc8d7;
+}
+
+:root[data-theme="dark"] .chart-tooltip strong {
+  color: #f0f3f8;
+}
+
+:root[data-theme="dark"] .range-fieldset {
+  border-color: #3a4759;
+}
+
+:root[data-theme="dark"] .range-fieldset legend,
+:root[data-theme="dark"] .range-fieldset label {
+  color: #a9b5c5;
+}
+
+:root[data-theme="dark"] .range-fieldset input {
+  border-color: #3a4759;
+  background: #111a27;
+  color: #e6ebf2;
+}
+
+:root[data-theme="dark"] .process-table-wrap {
+  border-color: #2c394a;
+}
+
+:root[data-theme="dark"] .process-table th,
+:root[data-theme="dark"] .process-table td {
+  border-color: #2b3747;
+}
+
+:root[data-theme="dark"] .process-table th {
+  background: #202c3b;
+  color: #a9b5c5;
+}
+
+:root[data-theme="dark"] .process-sort-button:hover {
+  color: #fff;
+}
+
+:root[data-theme="dark"] .process-name {
+  color: #e4eaf2;
+}
+
+:root[data-theme="dark"] .process-pid,
+:root[data-theme="dark"] .process-table td:nth-child(4),
+:root[data-theme="dark"] .process-table td:nth-child(5) {
+  color: #b4c0d0;
+}
+
+:root[data-theme="dark"] .process-empty {
+  color: #a9b5c5;
+}
+
+:root[data-theme="dark"] .error-banner {
+  border-color: #713d43;
+  background: #3b242b;
+  color: #ffaaa7;
+}
+
+:root[data-theme="dark"] .error-banner span + span {
+  color: #e59a9a;
 }
 
 @media (max-width: 720px) {

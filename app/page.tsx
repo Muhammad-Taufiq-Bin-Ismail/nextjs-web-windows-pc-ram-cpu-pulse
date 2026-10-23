@@ -45,6 +45,7 @@ type MetricsResponse = {
 
 type ProcessSortColumn = "name" | "pid" | "cpuUsage" | "memoryUsedBytes" | "memoryUsage";
 type SortDirection = "ascending" | "descending";
+type Theme = "light" | "dark";
 
 /** Formats a byte count as gibibytes for the dashboard. */
 function formatBytes(bytes: number): string {
@@ -81,6 +82,7 @@ export default function DashboardPage() {
     processHistory: [],
     lastUpdated: null,
   });
+  const [theme, setTheme] = useState<Theme>("light");
   const [error, setError] = useState<string | null>(null);
   const [rangeStartDate, setRangeStartDate] = useState("");
   const [rangeStartTime, setRangeStartTime] = useState("");
@@ -105,6 +107,30 @@ export default function DashboardPage() {
     useState<ProcessSortColumn>("cpuUsage");
   const [snapshotSortDirection, setSnapshotSortDirection] =
     useState<SortDirection>("descending");
+
+  useEffect(() => {
+    try {
+      const savedTheme = window.localStorage.getItem("pc-status-theme");
+      if (savedTheme === "dark" || savedTheme === "light") {
+        setTheme(savedTheme);
+        document.documentElement.dataset.theme = savedTheme;
+      }
+    } catch (cause) {
+      console.error("Unable to load the saved dashboard theme:", cause);
+    }
+  }, []);
+
+  /** Switches the dashboard palette and remembers the selection. */
+  const toggleTheme = () => {
+    const nextTheme = theme === "light" ? "dark" : "light";
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    try {
+      window.localStorage.setItem("pc-status-theme", nextTheme);
+    } catch (cause) {
+      console.error("Unable to save the dashboard theme:", cause);
+    }
+  };
 
   useEffect(() => {
     const now = new Date();
@@ -345,6 +371,16 @@ export default function DashboardPage() {
           <span className="live-dot" />
           <span>LIVE MONITORING V1</span>
         </div>
+        <button
+          aria-label={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
+          aria-pressed={theme === "dark"}
+          className="theme-toggle"
+          onClick={toggleTheme}
+          type="button"
+        >
+          <span aria-hidden="true">{theme === "light" ? "☾" : "☀"}</span>
+          <span>{theme === "light" ? "Dark mode" : "Light mode"}</span>
+        </button>
       </header>
 
       <section className="page-heading">
