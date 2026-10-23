@@ -35,3 +35,7 @@ pickers to load overall CPU and RAM charts for a selected range; hover over a
 chart to see the sample value and local date/time. Click a point on either
 historical chart to show all process metrics from the closest retained snapshot
 within five seconds of that sample.
+The selected process snapshot table can be sorted by every column. Hovering on
+either system chart shows both CPU and RAM values for that sample. Drag across a
+historical chart to highlight and zoom into that time range; the date and time
+controls update to match the selected zone.

@@ -69,7 +69,8 @@ function formatLocalDate(date: Date): string {
 function formatLocalTime(date: Date): string {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
 }
 
 /** Renders the live CPU and memory monitoring dashboard. */
@@ -99,6 +100,10 @@ export default function DashboardPage() {
   const processSnapshotRequestId = useRef(0);
   const [sortColumn, setSortColumn] = useState<ProcessSortColumn>("cpuUsage");
   const [sortDirection, setSortDirection] =
+    useState<SortDirection>("descending");
+  const [snapshotSortColumn, setSnapshotSortColumn] =
+    useState<ProcessSortColumn>("cpuUsage");
+  const [snapshotSortDirection, setSnapshotSortDirection] =
     useState<SortDirection>("descending");
 
   useEffect(() => {
@@ -147,10 +152,21 @@ export default function DashboardPage() {
   const latestSample = data.samples.at(-1);
   /** Converts samples into the chart's timestamp-and-value format. */
   const chartSamples = (key: "cpuUsage" | "memoryUsage") =>
-    data.samples.map((sample) => ({
-      sampledAt: sample.sampledAt,
-      value: sample[key],
-    }));
+    data.samples.map((sample) =>
+      key === "cpuUsage"
+        ? {
+            sampledAt: sample.sampledAt,
+            value: sample.cpuUsage,
+            companionValue: sample.memoryUsage,
+            companionLabel: "RAM",
+          }
+        : {
+            sampledAt: sample.sampledAt,
+            value: sample.memoryUsage,
+            companionValue: sample.cpuUsage,
+            companionLabel: "CPU",
+          },
+    );
   const processHistoryByKey = new Map(
     data.processHistory.map((history) => [
       `${history.pid}-${history.startedAt}`,
@@ -188,28 +204,60 @@ export default function DashboardPage() {
     setSortDirection("ascending");
   };
 
-  /** Loads overall system samples for the selected local date and time range. */
-  const loadRangeSamples = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setRangeError(null);
+  /** Sorts columns in the process snapshot selected from a historical chart. */
+  const changeSnapshotSort = (column: ProcessSortColumn) => {
+    if (snapshotSortColumn === column) {
+      setSnapshotSortDirection((direction) =>
+        direction === "ascending" ? "descending" : "ascending",
+      );
+      return;
+    }
+    setSnapshotSortColumn(column);
+    setSnapshotSortDirection("ascending");
+  };
 
-    const startTime = new Date(
-      `${rangeStartDate}T${rangeStartTime}`,
-    ).getTime();
-    const endTime = new Date(`${rangeEndDate}T${rangeEndTime}`).getTime();
+  const sortedSnapshotProcesses = [
+    ...(selectedProcessSnapshot?.processes ?? []),
+  ].sort((left, right) => {
+    let comparison: number;
+    if (snapshotSortColumn === "name") {
+      comparison = left.name.localeCompare(right.name, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+    } else if (snapshotSortColumn === "pid") {
+      comparison = left.pid - right.pid;
+    } else if (snapshotSortColumn === "cpuUsage") {
+      comparison = left.cpuUsage - right.cpuUsage;
+    } else if (snapshotSortColumn === "memoryUsedBytes") {
+      comparison = left.memoryUsedBytes - right.memoryUsedBytes;
+    } else {
+      comparison = left.memoryUsage - right.memoryUsage;
+    }
+    return snapshotSortDirection === "ascending" ? comparison : -comparison;
+  });
+
+  /** Loads samples for the selected timestamp range and updates the date/time controls. */
+  const applyRange = async (startTime: number, endTime: number) => {
     if (
-      !rangeStartDate ||
-      !rangeStartTime ||
-      !rangeEndDate ||
-      !rangeEndTime ||
-      !Number.isFinite(startTime) ||
-      !Number.isFinite(endTime) ||
+      !Number.isSafeInteger(startTime) ||
+      !Number.isSafeInteger(endTime) ||
+      startTime < 0 ||
       endTime < startTime
     ) {
       setRangeError("Choose a valid start and end date and time.");
       return;
     }
 
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+    setRangeStartDate(formatLocalDate(startDate));
+    setRangeStartTime(formatLocalTime(startDate));
+    setRangeEndDate(formatLocalDate(endDate));
+    setRangeEndTime(formatLocalTime(endDate));
+    setRangeError(null);
+    setSelectedChartSample(null);
+    setSelectedProcessSnapshot(null);
     setRangeLoading(true);
     try {
       const query = new URLSearchParams({
@@ -233,6 +281,31 @@ export default function DashboardPage() {
     } finally {
       setRangeLoading(false);
     }
+  };
+
+  /** Loads overall system samples for the selected local date and time range. */
+  const loadRangeSamples = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setRangeError(null);
+
+    const startTime = new Date(
+      `${rangeStartDate}T${rangeStartTime}`,
+    ).getTime();
+    const endTime = new Date(`${rangeEndDate}T${rangeEndTime}`).getTime();
+    if (
+      !rangeStartDate ||
+      !rangeStartTime ||
+      !rangeEndDate ||
+      !rangeEndTime ||
+      !Number.isFinite(startTime) ||
+      !Number.isFinite(endTime) ||
+      endTime < startTime
+    ) {
+      setRangeError("Choose a valid start and end date and time.");
+      return;
+    }
+
+    await applyRange(startTime, endTime);
   };
 
   /** Loads the process snapshot nearest to a clicked overall chart sample. */
@@ -409,7 +482,8 @@ export default function DashboardPage() {
         </div>
         <p className="range-description">
           Choose local start and end dates and times to view overall system CPU
-          and RAM usage.
+          and RAM usage. Drag across either chart to zoom into a time range, or
+          click a chart point to see its process snapshot.
         </p>
         <form className="range-form" onSubmit={loadRangeSamples}>
           <fieldset className="range-fieldset">
@@ -430,6 +504,7 @@ export default function DashboardPage() {
                 aria-label="Start time"
                 onChange={(event) => setRangeStartTime(event.target.value)}
                 required
+                step={1}
                 type="time"
                 value={rangeStartTime}
               />
@@ -453,6 +528,7 @@ export default function DashboardPage() {
                 aria-label="End time"
                 onChange={(event) => setRangeEndTime(event.target.value)}
                 required
+                step={1}
                 type="time"
                 value={rangeEndTime}
               />
@@ -489,9 +565,14 @@ export default function DashboardPage() {
                 );
                 if (sample) void loadProcessSnapshot(sample);
               }}
+              onSelectRange={(range) => {
+                void applyRange(range.start, range.end);
+              }}
               samples={rangeSamples.map((sample) => ({
                 sampledAt: sample.sampledAt,
                 value: sample.cpuUsage,
+                companionValue: sample.memoryUsage,
+                companionLabel: "RAM",
               }))}
             />
           </article>
@@ -511,9 +592,14 @@ export default function DashboardPage() {
                 );
                 if (sample) void loadProcessSnapshot(sample);
               }}
+              onSelectRange={(range) => {
+                void applyRange(range.start, range.end);
+              }}
               samples={rangeSamples.map((sample) => ({
                 sampledAt: sample.sampledAt,
                 value: sample.memoryUsage,
+                companionValue: sample.cpuUsage,
+                companionLabel: "CPU",
               }))}
             />
           </article>
@@ -569,15 +655,44 @@ export default function DashboardPage() {
                   <table className="process-table snapshot-process-table">
                     <thead>
                       <tr>
-                        <th scope="col">Task name</th>
-                        <th scope="col">PID</th>
-                        <th scope="col">CPU</th>
-                        <th scope="col">RAM</th>
-                        <th scope="col">RAM %</th>
+                        {(
+                          [
+                            ["name", "Task name"],
+                            ["pid", "PID"],
+                            ["cpuUsage", "CPU"],
+                            ["memoryUsedBytes", "RAM"],
+                            ["memoryUsage", "RAM %"],
+                          ] as const
+                        ).map(([column, label]) => (
+                          <th
+                            key={column}
+                            aria-sort={
+                              snapshotSortColumn === column
+                                ? snapshotSortDirection
+                                : "none"
+                            }
+                            scope="col"
+                          >
+                            <button
+                              className="process-sort-button"
+                              onClick={() => changeSnapshotSort(column)}
+                              type="button"
+                            >
+                              {label}
+                              {snapshotSortColumn === column && (
+                                <span aria-hidden="true">
+                                  {snapshotSortDirection === "ascending"
+                                    ? " ↑"
+                                    : " ↓"}
+                                </span>
+                              )}
+                            </button>
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedProcessSnapshot.processes.map((process) => (
+                      {sortedSnapshotProcesses.map((process) => (
                         <tr
                           key={`${process.pid}-${process.startedAt}`}
                           title={`Started ${process.startedAt || "unknown"}`}

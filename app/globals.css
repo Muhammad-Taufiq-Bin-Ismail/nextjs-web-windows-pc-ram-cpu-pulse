@@ -341,6 +341,18 @@ h2 {
   cursor: pointer;
 }
 
+.chart-range-selectable .chart-hover-target {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.chart-selection-zone {
+  fill: rgb(124 108 242 / 18%);
+  stroke: #7c6cf2;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
 .chart-tooltip {
   position: absolute;
   z-index: 2;

@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type MetricChartProps = {
   color: string;
   label: string;
-  samples: Array<{ sampledAt: number; value: number }>;
+  samples: Array<{
+    sampledAt: number;
+    value: number;
+    companionValue?: number;
+    companionLabel?: string;
+  }>;
   onSampleClick?: (sample: { sampledAt: number; value: number }) => void;
+  onSelectRange?: (range: { start: number; end: number }) => void;
 };
 
 const chartWidth = 900;
@@ -19,8 +25,25 @@ export function MetricChart({
   label,
   samples,
   onSampleClick,
+  onSelectRange,
 }: MetricChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [dragSelection, setDragSelection] = useState<[number, number] | null>(
+    null,
+  );
+  const dragStartIndex = useRef<number | null>(null);
+  const didDrag = useRef(false);
+  /** Maps a pointer's horizontal position to its nearest chart sample. */
+  const getIndexAtPointer = (clientX: number, bounds: DOMRect) => {
+    const svgX = ((clientX - bounds.left) / bounds.width) * chartWidth;
+    const pointRatio = Math.max(
+      0,
+      Math.min(1, (svgX - padding.left) / plotWidth),
+    );
+    return samples.length > 0
+      ? Math.round(pointRatio * (samples.length - 1))
+      : null;
+  };
   const points = samples.map((sample, index) => {
     const x =
       padding.left +
@@ -36,30 +59,75 @@ export function MetricChart({
   return (
     <div className="chart-wrap">
       <svg
-        className={onSampleClick ? "metric-chart chart-clickable" : "metric-chart"}
+        className={[
+          "metric-chart",
+          onSampleClick && "chart-clickable",
+          onSelectRange && "chart-range-selectable",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         role="img"
         aria-label={`${label} usage chart with ${samples.length} samples${onSampleClick ? "; click to view processes at a sample" : ""}`}
         viewBox={`0 0 ${chartWidth} ${chartHeight}`}
         onClick={() => {
+          if (didDrag.current) {
+            didDrag.current = false;
+            return;
+          }
           if (hoveredIndex !== null && onSampleClick) {
             onSampleClick(samples[hoveredIndex]);
           }
         }}
+        onPointerDown={(event) => {
+          if (!onSelectRange || samples.length < 2) return;
+          const index = getIndexAtPointer(
+            event.clientX,
+            event.currentTarget.getBoundingClientRect(),
+          );
+          if (index === null) return;
+          dragStartIndex.current = index;
+          didDrag.current = false;
+          setDragSelection([index, index]);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
         onPointerMove={(event) => {
           const bounds = event.currentTarget.getBoundingClientRect();
-          const svgX =
-            ((event.clientX - bounds.left) / bounds.width) * chartWidth;
-          const pointRatio = Math.max(
-            0,
-            Math.min(1, (svgX - padding.left) / plotWidth),
-          );
-          setHoveredIndex(
-            samples.length > 0
-              ? Math.round(pointRatio * (samples.length - 1))
-              : null,
-          );
+          const index = getIndexAtPointer(event.clientX, bounds);
+          setHoveredIndex(index);
+          if (index !== null && dragStartIndex.current !== null) {
+            setDragSelection([dragStartIndex.current, index]);
+            if (Math.abs(dragStartIndex.current - index) > 0) {
+              didDrag.current = true;
+            }
+          }
         }}
-        onPointerLeave={() => setHoveredIndex(null)}
+        onPointerUp={(event) => {
+          const startIndex = dragStartIndex.current;
+          const index = getIndexAtPointer(
+            event.clientX,
+            event.currentTarget.getBoundingClientRect(),
+          );
+          if (
+            startIndex !== null &&
+            index !== null &&
+            startIndex !== index &&
+            onSelectRange
+          ) {
+            didDrag.current = true;
+            const first = samples[Math.min(startIndex, index)].sampledAt;
+            const last = samples[Math.max(startIndex, index)].sampledAt;
+            onSelectRange({ start: first, end: last });
+          }
+          dragStartIndex.current = null;
+          setDragSelection(null);
+        }}
+        onPointerCancel={() => {
+          dragStartIndex.current = null;
+          setDragSelection(null);
+        }}
+        onPointerLeave={() => {
+          if (dragStartIndex.current === null) setHoveredIndex(null);
+        }}
       >
         {[0, 25, 50, 75, 100].map((value) => {
           const y = padding.top + (1 - value / 100) * plotHeight;
@@ -94,6 +162,23 @@ export function MetricChart({
               strokeLinejoin="round"
               strokeWidth="3"
             />
+            {dragSelection && (
+              <rect
+                className="chart-selection-zone"
+                x={
+                  padding.left +
+                  (Math.min(...dragSelection) / (samples.length - 1)) *
+                    plotWidth
+                }
+                y={padding.top}
+                width={
+                  (Math.abs(dragSelection[1] - dragSelection[0]) /
+                    (samples.length - 1)) *
+                  plotWidth
+                }
+                height={plotHeight}
+              />
+            )}
             {hoveredPoint && hoveredCoordinates && (
               <>
                 <line
@@ -137,8 +222,15 @@ export function MetricChart({
       {hoveredPoint && (
         <div className="chart-tooltip" role="status">
           <strong>{hoveredPoint.value.toFixed(2)}%</strong>
+          {hoveredPoint.companionValue !== undefined && (
+            <span>
+              {hoveredPoint.companionLabel}:{" "}
+              {hoveredPoint.companionValue.toFixed(2)}%
+            </span>
+          )}
           <span>{new Date(hoveredPoint.sampledAt).toLocaleString()}</span>
           {onSampleClick && <span>Click to view process usage</span>}
+          {onSelectRange && <span>Drag to zoom into a time range</span>}
         </div>
       )}
       {samples.length === 0 && (
