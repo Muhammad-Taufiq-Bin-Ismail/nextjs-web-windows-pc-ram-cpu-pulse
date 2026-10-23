@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 export type MetricSample = {
   sampledAt: number;
   cpuUsage: number;
+  cpuSpeedMhz: number;
   memoryUsage: number;
   memoryUsedBytes: number;
   memoryTotalBytes: number;
@@ -43,6 +44,7 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sampled_at INTEGER NOT NULL,
     cpu_usage REAL NOT NULL,
+    cpu_speed_mhz REAL NOT NULL DEFAULT 0,
     memory_usage REAL NOT NULL,
     memory_used_bytes INTEGER NOT NULL,
     memory_total_bytes INTEGER NOT NULL
@@ -65,22 +67,31 @@ database.exec(`
   CREATE INDEX IF NOT EXISTS process_samples_sampled_at
     ON process_samples (sampled_at);
 `);
+const metricColumns = database
+  .prepare("PRAGMA table_info(metric_samples)")
+  .all() as Array<{ name: string }>;
+if (!metricColumns.some((column) => column.name === "cpu_speed_mhz")) {
+  database.exec(
+    "ALTER TABLE metric_samples ADD COLUMN cpu_speed_mhz REAL NOT NULL DEFAULT 0",
+  );
+}
 
 const insertSample = database.prepare(`
   INSERT INTO metric_samples (
-    sampled_at, cpu_usage, memory_usage, memory_used_bytes, memory_total_bytes
-  ) VALUES (?, ?, ?, ?, ?)
+    sampled_at, cpu_usage, cpu_speed_mhz, memory_usage, memory_used_bytes, memory_total_bytes
+  ) VALUES (?, ?, ?, ?, ?, ?)
 `);
 
 const latestSamples = database.prepare(`
   SELECT
     sampled_at AS sampledAt,
     cpu_usage AS cpuUsage,
+    cpu_speed_mhz AS cpuSpeedMhz,
     memory_usage AS memoryUsage,
     memory_used_bytes AS memoryUsedBytes,
     memory_total_bytes AS memoryTotalBytes
   FROM (
-    SELECT sampled_at, cpu_usage, memory_usage, memory_used_bytes, memory_total_bytes
+    SELECT sampled_at, cpu_usage, cpu_speed_mhz, memory_usage, memory_used_bytes, memory_total_bytes
     FROM metric_samples
     ORDER BY sampled_at DESC
     LIMIT ?
@@ -91,11 +102,28 @@ const metricSamplesBetween = database.prepare(`
   SELECT
     sampled_at AS sampledAt,
     cpu_usage AS cpuUsage,
+    cpu_speed_mhz AS cpuSpeedMhz,
     memory_usage AS memoryUsage,
     memory_used_bytes AS memoryUsedBytes,
     memory_total_bytes AS memoryTotalBytes
   FROM metric_samples
   WHERE sampled_at >= ? AND sampled_at <= ?
+  ORDER BY sampled_at ASC
+`);
+const processHistoryBetween = database.prepare(`
+  SELECT
+    sampled_at AS sampledAt,
+    pid,
+    started_at AS startedAt,
+    task_name AS name,
+    cpu_usage AS cpuUsage,
+    memory_used_bytes AS memoryUsedBytes,
+    memory_usage AS memoryUsage
+  FROM process_samples
+  WHERE pid = ?
+    AND started_at = ?
+    AND sampled_at >= ?
+    AND sampled_at <= ?
   ORDER BY sampled_at ASC
 `);
 
@@ -169,6 +197,7 @@ export function saveMetricSample(sample: MetricSample): void {
   insertSample.run(
     sample.sampledAt,
     sample.cpuUsage,
+    sample.cpuSpeedMhz,
     sample.memoryUsage,
     sample.memoryUsedBytes,
     sample.memoryTotalBytes,
@@ -216,6 +245,21 @@ export function getMetricSamplesBetween(
   endTime: number,
 ): MetricSample[] {
   return metricSamplesBetween.all(startTime, endTime) as MetricSample[];
+}
+
+/** Returns CPU and RAM history for one process instance within a time range. */
+export function getProcessHistoryBetween(
+  pid: number,
+  startedAt: string,
+  startTime: number,
+  endTime: number,
+): Array<ProcessMetric & { sampledAt: number }> {
+  return processHistoryBetween.all(
+    pid,
+    startedAt,
+    startTime,
+    endTime,
+  ) as Array<ProcessMetric & { sampledAt: number }>;
 }
 
 /** Returns per-process metrics from the latest recorded snapshot. */

@@ -8,6 +8,7 @@ type MetricChartProps = {
     value: number;
     cpuUsage: number;
     memoryUsage: number;
+    cpuSpeedMhz?: number;
   }>;
   onSampleClick?: (sample: { sampledAt: number; value: number }) => void;
   onSelectRange?: (range: { start: number; end: number }) => void;
@@ -245,6 +246,11 @@ export function MetricChart({
           </strong>
           <span>CPU: {hoveredPoint.cpuUsage.toFixed(2)}%</span>
           <span>RAM: {hoveredPoint.memoryUsage.toFixed(2)}%</span>
+          {hoveredPoint.cpuSpeedMhz !== undefined && (
+            <span>
+              CPU speed: {(hoveredPoint.cpuSpeedMhz / 1_000).toFixed(2)} GHz
+            </span>
+          )}
           <span>{new Date(hoveredPoint.sampledAt).toLocaleString()}</span>
           {onSampleClick && <span>Click to view process usage</span>}
           {onSelectRange && <span>Drag to zoom into a time range</span>}

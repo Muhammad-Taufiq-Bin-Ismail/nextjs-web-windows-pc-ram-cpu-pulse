@@ -21,12 +21,18 @@ type RawProcess = {
   memoryUsedBytes: number;
 };
 
+type RawProcessSnapshot = {
+  cpuSpeedMhz: number;
+  processes: RawProcess[];
+};
+
 type PreviousProcessSample = {
   cpuTime100ns: number;
 };
 
 const powershellProcessSnapshot = `
 $ErrorActionPreference = 'Stop'
+$cpuSpeedMhz = [double]((Get-CimInstance -ClassName Win32_Processor | Measure-Object -Property CurrentClockSpeed -Average).Average)
 $processes = @(Get-CimInstance -ClassName Win32_Process | ForEach-Object {
   [pscustomobject]@{
     pid = [int]$_.ProcessId
@@ -36,7 +42,10 @@ $processes = @(Get-CimInstance -ClassName Win32_Process | ForEach-Object {
     memoryUsedBytes = [long]$_.WorkingSetSize
   }
 })
-ConvertTo-Json -InputObject $processes -Compress
+[pscustomobject]@{
+  cpuSpeedMhz = $cpuSpeedMhz
+  processes = $processes
+} | ConvertTo-Json -Depth 4 -Compress
 `;
 
 /** Totals CPU time counters across all processor cores. */
@@ -54,7 +63,7 @@ function getCpuTimes() {
 }
 
 /** Retrieves raw process CPU counters and working-set sizes through Windows CIM. */
-async function getRawProcesses(): Promise<RawProcess[]> {
+async function getRawProcesses(): Promise<RawProcessSnapshot> {
   if (process.platform !== "win32") {
     throw new Error("Per-process metrics collection requires Windows.");
   }
@@ -65,7 +74,18 @@ async function getRawProcesses(): Promise<RawProcess[]> {
     { windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
   );
   const result: unknown = JSON.parse(stdout);
-  const processes = Array.isArray(result) ? result : [result];
+  if (typeof result !== "object" || result === null) {
+    throw new Error("Windows returned an invalid process metrics snapshot.");
+  }
+  const snapshot = result as Record<string, unknown>;
+  const rawProcesses = snapshot.processes;
+  const processes = Array.isArray(rawProcesses) ? rawProcesses : [rawProcesses];
+  if (
+    typeof snapshot.cpuSpeedMhz !== "number" ||
+    !Number.isFinite(snapshot.cpuSpeedMhz)
+  ) {
+    throw new Error("Windows returned an invalid CPU speed reading.");
+  }
   if (
     !processes.every(
       (item): item is RawProcess => {
@@ -85,7 +105,10 @@ async function getRawProcesses(): Promise<RawProcess[]> {
   ) {
     throw new Error("Windows returned an invalid process metrics snapshot.");
   }
-  return processes;
+  return {
+    cpuSpeedMhz: snapshot.cpuSpeedMhz,
+    processes,
+  };
 }
 
 /** Starts the recurring system metrics collector once per server process. */
@@ -119,20 +142,21 @@ export function startMetricsCollector(): void {
           ? (memoryUsedBytes / memoryTotalBytes) * 100
           : 0;
 
+      const sampledAt = Date.now();
+      const rawSnapshot = await getRawProcesses();
       saveMetricSample({
-        sampledAt: Date.now(),
+        sampledAt,
         cpuUsage: Number(cpuUsage.toFixed(2)),
+        cpuSpeedMhz: rawSnapshot.cpuSpeedMhz,
         memoryUsage: Number(memoryUsage.toFixed(2)),
         memoryUsedBytes,
         memoryTotalBytes,
       });
 
-      const sampledAt = Date.now();
-      const rawProcesses = await getRawProcesses();
       const elapsedMs = sampledAt - previousProcessSampleAt;
       const coreCount = Math.max(os.cpus().length, 1);
       const currentProcessSamples = new Map<string, PreviousProcessSample>();
-      const processMetrics: ProcessMetric[] = rawProcesses
+      const processMetrics: ProcessMetric[] = rawSnapshot.processes
         .filter((process) => process.pid !== 0)
         .map((process) => {
           const processKey = `${process.pid}:${process.startedAt}`;

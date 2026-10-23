@@ -7,6 +7,7 @@ import { ProcessSparkline } from "./components/ProcessSparkline";
 type MetricSample = {
   sampledAt: number;
   cpuUsage: number;
+  cpuSpeedMhz: number;
   memoryUsage: number;
   memoryUsedBytes: number;
   memoryTotalBytes: number;
@@ -34,6 +35,10 @@ type ProcessHistory = {
 type ProcessSnapshotResult = {
   sampledAt: number | null;
   processes: ProcessMetric[];
+};
+
+type ProcessHistoryPoint = ProcessMetric & {
+  sampledAt: number;
 };
 
 type MetricsResponse = {
@@ -106,6 +111,19 @@ export default function DashboardPage() {
     null,
   );
   const processSnapshotRequestId = useRef(0);
+  const [historyProcess, setHistoryProcess] = useState<ProcessMetric | null>(
+    null,
+  );
+  const [processHistoryStartDate, setProcessHistoryStartDate] = useState("");
+  const [processHistoryStartTime, setProcessHistoryStartTime] = useState("");
+  const [processHistoryEndDate, setProcessHistoryEndDate] = useState("");
+  const [processHistoryEndTime, setProcessHistoryEndTime] = useState("");
+  const [processHistory, setProcessHistory] = useState<ProcessHistoryPoint[]>([]);
+  const [processHistoryLoading, setProcessHistoryLoading] = useState(false);
+  const [processHistoryError, setProcessHistoryError] = useState<string | null>(
+    null,
+  );
+  const processHistoryRequestId = useRef(0);
   const [sortColumn, setSortColumn] = useState<ProcessSortColumn>("cpuUsage");
   const [sortDirection, setSortDirection] =
     useState<SortDirection>("descending");
@@ -189,6 +207,7 @@ export default function DashboardPage() {
       value: sample[key],
       cpuUsage: sample.cpuUsage,
       memoryUsage: sample.memoryUsage,
+      cpuSpeedMhz: sample.cpuSpeedMhz,
     }));
   const processHistoryByKey = new Map(
     data.processHistory.map((history) => [
@@ -364,6 +383,100 @@ export default function DashboardPage() {
         setProcessSnapshotLoading(false);
       }
     }
+  };
+
+  /** Loads one process instance's retained history for the selected time range. */
+  const fetchProcessHistory = async (
+    process: ProcessMetric,
+    startTime: number,
+    endTime: number,
+  ) => {
+    const requestId = ++processHistoryRequestId.current;
+    setProcessHistoryLoading(true);
+    setProcessHistoryError(null);
+    try {
+      const query = new URLSearchParams({
+        pid: String(process.pid),
+        startedAt: process.startedAt,
+        start: String(startTime),
+        end: String(endTime),
+      });
+      const response = await fetch(`/api/metrics/process-history?${query}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`Process history request failed (${response.status})`);
+      }
+      const result = (await response.json()) as {
+        samples: ProcessHistoryPoint[];
+      };
+      if (requestId === processHistoryRequestId.current) {
+        setProcessHistory(result.samples);
+      }
+    } catch (cause) {
+      if (requestId === processHistoryRequestId.current) {
+        setProcessHistoryError(
+          cause instanceof Error
+            ? cause.message
+            : "Unable to load process history",
+        );
+      }
+    } finally {
+      if (requestId === processHistoryRequestId.current) {
+        setProcessHistoryLoading(false);
+      }
+    }
+  };
+
+  /** Opens the process history popover with the latest 15 minutes selected. */
+  const openProcessHistory = (process: ProcessMetric) => {
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - 15 * 60 * 1_000);
+    setHistoryProcess(process);
+    setProcessHistory([]);
+    setProcessHistoryStartDate(formatLocalDate(startDate));
+    setProcessHistoryStartTime(formatLocalTime(startDate));
+    setProcessHistoryEndDate(formatLocalDate(endDate));
+    setProcessHistoryEndTime(formatLocalTime(endDate));
+    void fetchProcessHistory(
+      process,
+      startDate.getTime(),
+      endDate.getTime(),
+    );
+  };
+
+  /** Applies the popover's date and time filters to process history. */
+  const loadSelectedProcessHistory = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    if (!historyProcess) return;
+    const startTime = new Date(
+      `${processHistoryStartDate}T${processHistoryStartTime}`,
+    ).getTime();
+    const endTime = new Date(
+      `${processHistoryEndDate}T${processHistoryEndTime}`,
+    ).getTime();
+    if (
+      !processHistoryStartDate ||
+      !processHistoryStartTime ||
+      !processHistoryEndDate ||
+      !processHistoryEndTime ||
+      !Number.isFinite(startTime) ||
+      !Number.isFinite(endTime) ||
+      endTime < startTime
+    ) {
+      setProcessHistoryError("Choose a valid start and end date and time.");
+      return;
+    }
+    await fetchProcessHistory(historyProcess, startTime, endTime);
+  };
+
+  /** Closes the process history popover and ignores any pending request. */
+  const closeProcessHistory = () => {
+    processHistoryRequestId.current += 1;
+    setHistoryProcess(null);
+    setProcessHistoryLoading(false);
   };
 
   return (
@@ -612,6 +725,7 @@ export default function DashboardPage() {
                 value: sample.cpuUsage,
                 cpuUsage: sample.cpuUsage,
                 memoryUsage: sample.memoryUsage,
+                cpuSpeedMhz: sample.cpuSpeedMhz,
               }))}
             />
           </article>
@@ -641,6 +755,7 @@ export default function DashboardPage() {
                 value: sample.memoryUsage,
                 cpuUsage: sample.cpuUsage,
                 memoryUsage: sample.memoryUsage,
+                cpuSpeedMhz: sample.cpuSpeedMhz,
               }))}
             />
           </article>
@@ -739,7 +854,15 @@ export default function DashboardPage() {
                           title={`Started ${process.startedAt || "unknown"}`}
                         >
                           <td className="process-name">{process.name}</td>
-                          <td className="process-pid">{process.pid}</td>
+                          <td className="process-pid">
+                            <button
+                              className="process-pid-button"
+                              onClick={() => openProcessHistory(process)}
+                              type="button"
+                            >
+                              {process.pid}
+                            </button>
+                          </td>
                           <td className="process-cpu">
                             {process.cpuUsage.toFixed(1)}%
                           </td>
@@ -853,7 +976,15 @@ export default function DashboardPage() {
                     title={`Started ${process.startedAt || "unknown"}`}
                   >
                     <td className="process-name">{process.name}</td>
-                    <td className="process-pid">{process.pid}</td>
+                    <td className="process-pid">
+                      <button
+                        className="process-pid-button"
+                        onClick={() => openProcessHistory(process)}
+                        type="button"
+                      >
+                        {process.pid}
+                      </button>
+                    </td>
                     <td className="process-cpu">
                       {process.cpuUsage.toFixed(1)}%
                     </td>
@@ -893,6 +1024,173 @@ export default function DashboardPage() {
           </table>
         </div>
       </section>
+
+      {historyProcess && (
+        <div
+          className="process-popover-backdrop"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeProcessHistory();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") closeProcessHistory();
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="process-history-title"
+            aria-modal="true"
+            className="process-popover"
+            role="dialog"
+          >
+            <div className="process-popover-heading">
+              <div>
+                <p className="eyebrow">PROCESS HISTORY</p>
+                <h2 id="process-history-title">
+                  {historyProcess.name} <span>PID {historyProcess.pid}</span>
+                </h2>
+                <p className="process-description">
+                  Process instance started{" "}
+                  {historyProcess.startedAt
+                    ? new Date(historyProcess.startedAt).toLocaleString()
+                    : "at an unknown time"}
+                </p>
+              </div>
+              <button
+                aria-label="Close process history"
+                className="popover-close"
+                onClick={closeProcessHistory}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            <form
+              className="range-form process-history-form"
+              onSubmit={loadSelectedProcessHistory}
+            >
+              <fieldset className="range-fieldset">
+                <legend>Start</legend>
+                <label>
+                  <span>Date</span>
+                  <input
+                    aria-label="Process history start date"
+                    onChange={(event) =>
+                      setProcessHistoryStartDate(event.target.value)
+                    }
+                    required
+                    type="date"
+                    value={processHistoryStartDate}
+                  />
+                </label>
+                <label>
+                  <span>Time</span>
+                  <input
+                    aria-label="Process history start time"
+                    onChange={(event) =>
+                      setProcessHistoryStartTime(event.target.value)
+                    }
+                    required
+                    step={1}
+                    type="time"
+                    value={processHistoryStartTime}
+                  />
+                </label>
+              </fieldset>
+              <fieldset className="range-fieldset">
+                <legend>End</legend>
+                <label>
+                  <span>Date</span>
+                  <input
+                    aria-label="Process history end date"
+                    onChange={(event) =>
+                      setProcessHistoryEndDate(event.target.value)
+                    }
+                    required
+                    type="date"
+                    value={processHistoryEndDate}
+                  />
+                </label>
+                <label>
+                  <span>Time</span>
+                  <input
+                    aria-label="Process history end time"
+                    onChange={(event) =>
+                      setProcessHistoryEndTime(event.target.value)
+                    }
+                    required
+                    step={1}
+                    type="time"
+                    value={processHistoryEndTime}
+                  />
+                </label>
+              </fieldset>
+              <button
+                className="range-submit"
+                disabled={processHistoryLoading}
+                type="submit"
+              >
+                {processHistoryLoading ? "Loading..." : "Apply range"}
+              </button>
+            </form>
+            <p className="process-description history-retention-note">
+              Process history is retained for 15 minutes.
+            </p>
+            {processHistoryError && (
+              <p className="range-error" role="alert">
+                {processHistoryError}
+              </p>
+            )}
+            {processHistoryLoading ? (
+              <p aria-live="polite" className="snapshot-message">
+                Loading process history...
+              </p>
+            ) : processHistory.length === 0 ? (
+              <p className="snapshot-message">
+                No samples for this process in the selected range.
+              </p>
+            ) : (
+              <div className="process-history-charts">
+                <article className="chart-card">
+                  <div className="chart-heading">
+                    <div>
+                      <p className="eyebrow">PROCESS CPU</p>
+                      <h2>CPU usage</h2>
+                    </div>
+                  </div>
+                  <MetricChart
+                    color="#7c6cf2"
+                    label="CPU"
+                    samples={processHistory.map((sample) => ({
+                      sampledAt: sample.sampledAt,
+                      value: sample.cpuUsage,
+                      cpuUsage: sample.cpuUsage,
+                      memoryUsage: sample.memoryUsage,
+                    }))}
+                  />
+                </article>
+                <article className="chart-card">
+                  <div className="chart-heading">
+                    <div>
+                      <p className="eyebrow">PROCESS RAM</p>
+                      <h2>RAM usage</h2>
+                    </div>
+                  </div>
+                  <MetricChart
+                    color="#18b89a"
+                    label="RAM"
+                    samples={processHistory.map((sample) => ({
+                      sampledAt: sample.sampledAt,
+                      value: sample.memoryUsage,
+                      cpuUsage: sample.cpuUsage,
+                      memoryUsage: sample.memoryUsage,
+                    }))}
+                  />
+                </article>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       <footer className="page-footer">
         <span>

@@ -41,3 +41,7 @@ The selected process snapshot table can be sorted by every column. Hovering on
 either system chart shows both CPU and RAM values for that sample. Drag across a
 historical chart to highlight and zoom into that time range; the date and time
 controls update to match the selected zone.
+System samples also record processor clock speed in MHz from Windows CIM.
+Click a process PID to open a history popover with selectable date/time controls
+and CPU/RAM charts for that process instance. Per-process history is available
+for the same 15-minute retention window.
