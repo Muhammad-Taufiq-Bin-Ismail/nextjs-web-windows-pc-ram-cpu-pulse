@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { MetricChart } from "./components/MetricChart";
 import { ProcessSparkline } from "./components/ProcessSparkline";
 
@@ -52,6 +52,21 @@ function formatProcessMemory(bytes: number): string {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 }
 
+/** Formats a date using the browser's local timezone for a date input. */
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Formats a time using the browser's local timezone for a time input. */
+function formatLocalTime(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
 /** Renders the live CPU and memory monitoring dashboard. */
 export default function DashboardPage() {
   const [data, setData] = useState<MetricsResponse>({
@@ -61,9 +76,25 @@ export default function DashboardPage() {
     lastUpdated: null,
   });
   const [error, setError] = useState<string | null>(null);
+  const [rangeStartDate, setRangeStartDate] = useState("");
+  const [rangeStartTime, setRangeStartTime] = useState("");
+  const [rangeEndDate, setRangeEndDate] = useState("");
+  const [rangeEndTime, setRangeEndTime] = useState("");
+  const [rangeSamples, setRangeSamples] = useState<MetricSample[]>([]);
+  const [rangeLoading, setRangeLoading] = useState(false);
+  const [rangeError, setRangeError] = useState<string | null>(null);
   const [sortColumn, setSortColumn] = useState<ProcessSortColumn>("cpuUsage");
   const [sortDirection, setSortDirection] =
     useState<SortDirection>("descending");
+
+  useEffect(() => {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1_000);
+    setRangeStartDate(formatLocalDate(oneHourAgo));
+    setRangeStartTime(formatLocalTime(oneHourAgo));
+    setRangeEndDate(formatLocalDate(now));
+    setRangeEndTime(formatLocalTime(now));
+  }, []);
 
   // Fetch metrics immediately, then refresh every five seconds until unmounted.
   useEffect(() => {
@@ -141,6 +172,53 @@ export default function DashboardPage() {
     }
     setSortColumn(column);
     setSortDirection("ascending");
+  };
+
+  /** Loads overall system samples for the selected local date and time range. */
+  const loadRangeSamples = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setRangeError(null);
+
+    const startTime = new Date(
+      `${rangeStartDate}T${rangeStartTime}`,
+    ).getTime();
+    const endTime = new Date(`${rangeEndDate}T${rangeEndTime}`).getTime();
+    if (
+      !rangeStartDate ||
+      !rangeStartTime ||
+      !rangeEndDate ||
+      !rangeEndTime ||
+      !Number.isFinite(startTime) ||
+      !Number.isFinite(endTime) ||
+      endTime < startTime
+    ) {
+      setRangeError("Choose a valid start and end date and time.");
+      return;
+    }
+
+    setRangeLoading(true);
+    try {
+      const query = new URLSearchParams({
+        start: String(startTime),
+        end: String(endTime),
+      });
+      const response = await fetch(`/api/metrics/history?${query}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`History request failed (${response.status})`);
+      }
+      const result = (await response.json()) as {
+        samples: MetricSample[];
+      };
+      setRangeSamples(result.samples);
+    } catch (cause) {
+      setRangeError(
+        cause instanceof Error ? cause.message : "Unable to load chart history",
+      );
+    } finally {
+      setRangeLoading(false);
+    }
   };
 
   return (
@@ -271,6 +349,114 @@ export default function DashboardPage() {
             <span className="chart-period">Last 6 minutes</span>
           </div>
         </article>
+      </section>
+
+      <section aria-label="Custom CPU and RAM history" className="range-card">
+        <div className="range-heading">
+          <div>
+            <p className="eyebrow">HISTORICAL OVERVIEW</p>
+            <h2>Explore a time range</h2>
+          </div>
+        </div>
+        <p className="range-description">
+          Choose local start and end dates and times to view overall system CPU
+          and RAM usage.
+        </p>
+        <form className="range-form" onSubmit={loadRangeSamples}>
+          <fieldset className="range-fieldset">
+            <legend>Start</legend>
+            <label>
+              <span>Date</span>
+              <input
+                aria-label="Start date"
+                onChange={(event) => setRangeStartDate(event.target.value)}
+                required
+                type="date"
+                value={rangeStartDate}
+              />
+            </label>
+            <label>
+              <span>Time</span>
+              <input
+                aria-label="Start time"
+                onChange={(event) => setRangeStartTime(event.target.value)}
+                required
+                type="time"
+                value={rangeStartTime}
+              />
+            </label>
+          </fieldset>
+          <fieldset className="range-fieldset">
+            <legend>End</legend>
+            <label>
+              <span>Date</span>
+              <input
+                aria-label="End date"
+                onChange={(event) => setRangeEndDate(event.target.value)}
+                required
+                type="date"
+                value={rangeEndDate}
+              />
+            </label>
+            <label>
+              <span>Time</span>
+              <input
+                aria-label="End time"
+                onChange={(event) => setRangeEndTime(event.target.value)}
+                required
+                type="time"
+                value={rangeEndTime}
+              />
+            </label>
+          </fieldset>
+          <button className="range-submit" disabled={rangeLoading} type="submit">
+            {rangeLoading ? "Loading..." : "Show chart"}
+          </button>
+        </form>
+        {rangeError && (
+          <p className="range-error" role="alert">
+            {rangeError}
+          </p>
+        )}
+        <p aria-live="polite" className="range-result-label">
+          {rangeSamples.length
+            ? `${rangeSamples.length.toLocaleString()} samples in selected range`
+            : "No samples loaded for the selected range"}
+        </p>
+        <div className="charts-grid range-charts">
+          <article className="chart-card">
+            <div className="chart-heading">
+              <div>
+                <p className="eyebrow">OVERALL SYSTEM</p>
+                <h2>CPU usage</h2>
+              </div>
+            </div>
+            <MetricChart
+              color="#7c6cf2"
+              label="CPU"
+              samples={rangeSamples.map((sample) => ({
+                sampledAt: sample.sampledAt,
+                value: sample.cpuUsage,
+              }))}
+            />
+          </article>
+          <article className="chart-card">
+            <div className="chart-heading">
+              <div>
+                <p className="eyebrow">OVERALL SYSTEM</p>
+                <h2>RAM usage</h2>
+              </div>
+            </div>
+            <MetricChart
+              color="#18b89a"
+              label="RAM"
+              samples={rangeSamples.map((sample) => ({
+                sampledAt: sample.sampledAt,
+                value: sample.memoryUsage,
+              }))}
+            />
+          </article>
+        </div>
       </section>
 
       <section aria-label="Per-process CPU and RAM usage" className="process-card">

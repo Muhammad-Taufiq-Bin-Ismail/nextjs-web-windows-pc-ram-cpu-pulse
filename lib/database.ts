@@ -82,6 +82,17 @@ const latestSamples = database.prepare(`
   )
   ORDER BY sampled_at ASC
 `);
+const metricSamplesBetween = database.prepare(`
+  SELECT
+    sampled_at AS sampledAt,
+    cpu_usage AS cpuUsage,
+    memory_usage AS memoryUsage,
+    memory_used_bytes AS memoryUsedBytes,
+    memory_total_bytes AS memoryTotalBytes
+  FROM metric_samples
+  WHERE sampled_at >= ? AND sampled_at <= ?
+  ORDER BY sampled_at ASC
+`);
 
 const insertProcessSnapshot = database.prepare(
   "INSERT INTO process_snapshots (sampled_at) VALUES (?)",
@@ -174,6 +185,14 @@ export function saveProcessSamples(
 /** Returns the most recent samples in chronological order. */
 export function getLatestMetricSamples(limit = 120): MetricSample[] {
   return latestSamples.all(limit) as MetricSample[];
+}
+
+/** Returns system metric samples recorded inside the inclusive time range. */
+export function getMetricSamplesBetween(
+  startTime: number,
+  endTime: number,
+): MetricSample[] {
+  return metricSamplesBetween.all(startTime, endTime) as MetricSample[];
 }
 
 /** Returns per-process metrics from the latest recorded snapshot. */

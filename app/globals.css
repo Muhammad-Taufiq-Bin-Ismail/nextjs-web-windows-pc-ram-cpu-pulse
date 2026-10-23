@@ -324,6 +324,43 @@ h2 {
   stroke-width: 1;
 }
 
+.chart-hover-line {
+  stroke: #9aa5b2;
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.chart-hover-target {
+  fill: transparent;
+  pointer-events: all;
+  cursor: crosshair;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 50%;
+  display: grid;
+  gap: 3px;
+  padding: 7px 9px;
+  transform: translateX(-50%);
+  border: 1px solid #e9edf3;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 3px 12px rgb(26 41 65 / 10%);
+  color: #526176;
+  font-size: 10px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.chart-tooltip strong {
+  color: #273447;
+  font-size: 12px;
+}
+
 .chart-axis-label {
   fill: #96a0ad;
   font-family: "DM Sans", sans-serif;
@@ -365,6 +402,118 @@ h2 {
 .chart-period {
   margin-left: auto;
   color: #a0aab6;
+}
+
+.range-card {
+  margin-top: 18px;
+  padding: 20px 22px 18px;
+  border: 1px solid #e9edf3;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgb(26 41 65 / 3%);
+}
+
+.range-heading .eyebrow {
+  margin-bottom: 5px;
+  font-size: 9px;
+}
+
+.range-description {
+  margin: 8px 0 16px;
+  color: #8290a3;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.range-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.range-fieldset {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 9px 9px;
+  border: 1px solid #e9edf3;
+  border-radius: 8px;
+}
+
+.range-fieldset legend {
+  padding: 0 4px;
+  color: #758398;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.range-fieldset label {
+  display: grid;
+  gap: 4px;
+  color: #8290a3;
+  font-size: 9px;
+}
+
+.range-fieldset input {
+  width: 145px;
+  min-height: 34px;
+  padding: 5px 7px;
+  border: 1px solid #e9edf3;
+  border-radius: 6px;
+  background: #fff;
+  color: #273447;
+  font: inherit;
+  font-size: 11px;
+}
+
+.range-fieldset input[type="time"] {
+  width: 104px;
+}
+
+.range-fieldset input:focus-visible,
+.range-submit:focus-visible {
+  outline: 2px solid #7c6cf2;
+  outline-offset: 2px;
+}
+
+.range-submit {
+  min-height: 36px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 7px;
+  background: #7364e8;
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.range-submit:hover:not(:disabled) {
+  background: #6253d5;
+}
+
+.range-submit:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.range-error {
+  margin: 12px 0 0;
+  color: #aa3e38;
+  font-size: 11px;
+}
+
+.range-result-label {
+  margin: 15px 0 0;
+  color: #8290a3;
+  font-size: 10px;
+}
+
+.range-charts {
+  margin-top: 10px;
 }
 
 .process-card {
@@ -536,6 +685,35 @@ h2 {
 
   .process-card {
     margin-top: 13px;
+  }
+
+  .range-card {
+    margin-top: 13px;
+    padding: 17px 15px;
+  }
+
+  .range-form {
+    align-items: stretch;
+  }
+
+  .range-fieldset {
+    flex: 1 1 100%;
+  }
+
+  .range-fieldset label:first-of-type {
+    flex: 1;
+  }
+
+  .range-fieldset input {
+    width: 100%;
+  }
+
+  .range-fieldset input[type="time"] {
+    width: 104px;
+  }
+
+  .range-submit {
+    width: 100%;
   }
 
   .process-heading {
