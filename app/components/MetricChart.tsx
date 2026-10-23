@@ -6,8 +6,8 @@ type MetricChartProps = {
   samples: Array<{
     sampledAt: number;
     value: number;
-    companionValue?: number;
-    companionLabel?: string;
+    cpuUsage: number;
+    memoryUsage: number;
   }>;
   onSampleClick?: (sample: { sampledAt: number; value: number }) => void;
   onSelectRange?: (range: { start: number; end: number }) => void;
@@ -221,13 +221,12 @@ export function MetricChart({
       </svg>
       {hoveredPoint && (
         <div className="chart-tooltip" role="status">
-          <strong>{hoveredPoint.value.toFixed(2)}%</strong>
-          {hoveredPoint.companionValue !== undefined && (
-            <span>
-              {hoveredPoint.companionLabel}:{" "}
-              {hoveredPoint.companionValue.toFixed(2)}%
-            </span>
-          )}
+          <strong>
+            {label === "CPU" ? "CPU" : "RAM"}:{" "}
+            {hoveredPoint.value.toFixed(2)}%
+          </strong>
+          <span>CPU: {hoveredPoint.cpuUsage.toFixed(2)}%</span>
+          <span>RAM: {hoveredPoint.memoryUsage.toFixed(2)}%</span>
           <span>{new Date(hoveredPoint.sampledAt).toLocaleString()}</span>
           {onSampleClick && <span>Click to view process usage</span>}
           {onSelectRange && <span>Drag to zoom into a time range</span>}

@@ -152,21 +152,12 @@ export default function DashboardPage() {
   const latestSample = data.samples.at(-1);
   /** Converts samples into the chart's timestamp-and-value format. */
   const chartSamples = (key: "cpuUsage" | "memoryUsage") =>
-    data.samples.map((sample) =>
-      key === "cpuUsage"
-        ? {
-            sampledAt: sample.sampledAt,
-            value: sample.cpuUsage,
-            companionValue: sample.memoryUsage,
-            companionLabel: "RAM",
-          }
-        : {
-            sampledAt: sample.sampledAt,
-            value: sample.memoryUsage,
-            companionValue: sample.cpuUsage,
-            companionLabel: "CPU",
-          },
-    );
+    data.samples.map((sample) => ({
+      sampledAt: sample.sampledAt,
+      value: sample[key],
+      cpuUsage: sample.cpuUsage,
+      memoryUsage: sample.memoryUsage,
+    }));
   const processHistoryByKey = new Map(
     data.processHistory.map((history) => [
       `${history.pid}-${history.startedAt}`,
@@ -571,8 +562,8 @@ export default function DashboardPage() {
               samples={rangeSamples.map((sample) => ({
                 sampledAt: sample.sampledAt,
                 value: sample.cpuUsage,
-                companionValue: sample.memoryUsage,
-                companionLabel: "RAM",
+                cpuUsage: sample.cpuUsage,
+                memoryUsage: sample.memoryUsage,
               }))}
             />
           </article>
@@ -598,8 +589,8 @@ export default function DashboardPage() {
               samples={rangeSamples.map((sample) => ({
                 sampledAt: sample.sampledAt,
                 value: sample.memoryUsage,
-                companionValue: sample.cpuUsage,
-                companionLabel: "CPU",
+                cpuUsage: sample.cpuUsage,
+                memoryUsage: sample.memoryUsage,
               }))}
             />
           </article>
