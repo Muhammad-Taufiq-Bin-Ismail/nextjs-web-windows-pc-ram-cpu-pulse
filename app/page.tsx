@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { MetricChart } from "./components/MetricChart";
 import { ProcessSparkline } from "./components/ProcessSparkline";
 
@@ -29,6 +29,11 @@ type ProcessHistory = {
     cpuUsage: number;
     memoryUsage: number;
   }>;
+};
+
+type ProcessSnapshotResult = {
+  sampledAt: number | null;
+  processes: ProcessMetric[];
 };
 
 type MetricsResponse = {
@@ -83,6 +88,15 @@ export default function DashboardPage() {
   const [rangeSamples, setRangeSamples] = useState<MetricSample[]>([]);
   const [rangeLoading, setRangeLoading] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
+  const [selectedChartSample, setSelectedChartSample] =
+    useState<MetricSample | null>(null);
+  const [selectedProcessSnapshot, setSelectedProcessSnapshot] =
+    useState<ProcessSnapshotResult | null>(null);
+  const [processSnapshotLoading, setProcessSnapshotLoading] = useState(false);
+  const [processSnapshotError, setProcessSnapshotError] = useState<string | null>(
+    null,
+  );
+  const processSnapshotRequestId = useRef(0);
   const [sortColumn, setSortColumn] = useState<ProcessSortColumn>("cpuUsage");
   const [sortDirection, setSortDirection] =
     useState<SortDirection>("descending");
@@ -218,6 +232,41 @@ export default function DashboardPage() {
       );
     } finally {
       setRangeLoading(false);
+    }
+  };
+
+  /** Loads the process snapshot nearest to a clicked overall chart sample. */
+  const loadProcessSnapshot = async (sample: MetricSample) => {
+    const requestId = ++processSnapshotRequestId.current;
+    setSelectedChartSample(sample);
+    setSelectedProcessSnapshot(null);
+    setProcessSnapshotError(null);
+    setProcessSnapshotLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/metrics/processes?at=${sample.sampledAt}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        throw new Error(`Process snapshot request failed (${response.status})`);
+      }
+      const result = (await response.json()) as ProcessSnapshotResult;
+      if (requestId === processSnapshotRequestId.current) {
+        setSelectedProcessSnapshot(result);
+      }
+    } catch (cause) {
+      if (requestId === processSnapshotRequestId.current) {
+        setProcessSnapshotError(
+          cause instanceof Error
+            ? cause.message
+            : "Unable to load process snapshot",
+        );
+      }
+    } finally {
+      if (requestId === processSnapshotRequestId.current) {
+        setProcessSnapshotLoading(false);
+      }
     }
   };
 
@@ -434,6 +483,12 @@ export default function DashboardPage() {
             <MetricChart
               color="#7c6cf2"
               label="CPU"
+              onSampleClick={(point) => {
+                const sample = rangeSamples.find(
+                  (item) => item.sampledAt === point.sampledAt,
+                );
+                if (sample) void loadProcessSnapshot(sample);
+              }}
               samples={rangeSamples.map((sample) => ({
                 sampledAt: sample.sampledAt,
                 value: sample.cpuUsage,
@@ -450,6 +505,12 @@ export default function DashboardPage() {
             <MetricChart
               color="#18b89a"
               label="RAM"
+              onSampleClick={(point) => {
+                const sample = rangeSamples.find(
+                  (item) => item.sampledAt === point.sampledAt,
+                );
+                if (sample) void loadProcessSnapshot(sample);
+              }}
               samples={rangeSamples.map((sample) => ({
                 sampledAt: sample.sampledAt,
                 value: sample.memoryUsage,
@@ -457,6 +518,85 @@ export default function DashboardPage() {
             />
           </article>
         </div>
+        {selectedChartSample && (
+          <section
+            aria-label="Processes at selected chart time"
+            className="selected-process-card"
+          >
+            <div className="process-heading">
+              <div>
+                <p className="eyebrow">PROCESS SNAPSHOT</p>
+                <h2>
+                  Processes at{" "}
+                  {new Date(selectedChartSample.sampledAt).toLocaleString()}
+                </h2>
+              </div>
+              {selectedProcessSnapshot?.sampledAt && (
+                <span className="process-count">
+                  Snapshot{" "}
+                  {new Date(
+                    selectedProcessSnapshot.sampledAt,
+                  ).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            <p className="process-description">
+              Showing the closest stored process snapshot within 5 seconds of
+              the selected chart point.
+            </p>
+            {processSnapshotLoading && (
+              <p aria-live="polite" className="snapshot-message">
+                Loading process usage...
+              </p>
+            )}
+            {processSnapshotError && (
+              <p className="range-error" role="alert">
+                {processSnapshotError}
+              </p>
+            )}
+            {!processSnapshotLoading &&
+              !processSnapshotError &&
+              selectedProcessSnapshot?.sampledAt === null && (
+                <p className="snapshot-message">
+                  No process snapshot is available near this time. Process
+                  snapshots are retained for 15 minutes.
+                </p>
+              )}
+            {!processSnapshotLoading &&
+              selectedProcessSnapshot &&
+              selectedProcessSnapshot.sampledAt !== null && (
+                <div className="process-table-wrap">
+                  <table className="process-table snapshot-process-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Task name</th>
+                        <th scope="col">PID</th>
+                        <th scope="col">CPU</th>
+                        <th scope="col">RAM</th>
+                        <th scope="col">RAM %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedProcessSnapshot.processes.map((process) => (
+                        <tr
+                          key={`${process.pid}-${process.startedAt}`}
+                          title={`Started ${process.startedAt || "unknown"}`}
+                        >
+                          <td className="process-name">{process.name}</td>
+                          <td className="process-pid">{process.pid}</td>
+                          <td className="process-cpu">
+                            {process.cpuUsage.toFixed(1)}%
+                          </td>
+                          <td>{formatProcessMemory(process.memoryUsedBytes)}</td>
+                          <td>{process.memoryUsage.toFixed(2)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+          </section>
+        )}
       </section>
 
       <section aria-label="Per-process CPU and RAM usage" className="process-card">

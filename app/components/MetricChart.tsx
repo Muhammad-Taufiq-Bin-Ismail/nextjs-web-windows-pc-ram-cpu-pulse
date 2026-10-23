@@ -4,6 +4,7 @@ type MetricChartProps = {
   color: string;
   label: string;
   samples: Array<{ sampledAt: number; value: number }>;
+  onSampleClick?: (sample: { sampledAt: number; value: number }) => void;
 };
 
 const chartWidth = 900;
@@ -13,7 +14,12 @@ const plotWidth = chartWidth - padding.left - padding.right;
 const plotHeight = chartHeight - padding.top - padding.bottom;
 
 /** Renders resource usage samples as a responsive SVG line chart. */
-export function MetricChart({ color, label, samples }: MetricChartProps) {
+export function MetricChart({
+  color,
+  label,
+  samples,
+  onSampleClick,
+}: MetricChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const points = samples.map((sample, index) => {
     const x =
@@ -30,10 +36,15 @@ export function MetricChart({ color, label, samples }: MetricChartProps) {
   return (
     <div className="chart-wrap">
       <svg
-        aria-label={`${label} usage chart with ${samples.length} samples`}
-        className="metric-chart"
+        className={onSampleClick ? "metric-chart chart-clickable" : "metric-chart"}
         role="img"
+        aria-label={`${label} usage chart with ${samples.length} samples${onSampleClick ? "; click to view processes at a sample" : ""}`}
         viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        onClick={() => {
+          if (hoveredIndex !== null && onSampleClick) {
+            onSampleClick(samples[hoveredIndex]);
+          }
+        }}
         onPointerMove={(event) => {
           const bounds = event.currentTarget.getBoundingClientRect();
           const svgX =
@@ -127,6 +138,7 @@ export function MetricChart({ color, label, samples }: MetricChartProps) {
         <div className="chart-tooltip" role="status">
           <strong>{hoveredPoint.value.toFixed(2)}%</strong>
           <span>{new Date(hoveredPoint.sampledAt).toLocaleString()}</span>
+          {onSampleClick && <span>Click to view process usage</span>}
         </div>
       )}
       {samples.length === 0 && (

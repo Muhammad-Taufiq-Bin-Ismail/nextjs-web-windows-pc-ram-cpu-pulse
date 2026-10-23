@@ -337,6 +337,10 @@ h2 {
   cursor: crosshair;
 }
 
+.chart-clickable .chart-hover-target {
+  cursor: pointer;
+}
+
 .chart-tooltip {
   position: absolute;
   z-index: 2;
@@ -514,6 +518,28 @@ h2 {
 
 .range-charts {
   margin-top: 10px;
+}
+
+.selected-process-card {
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid #e9edf3;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.selected-process-card .process-heading {
+  padding-top: 16px;
+}
+
+.snapshot-message {
+  margin: 14px 22px 18px;
+  color: #8290a3;
+  font-size: 11px;
+}
+
+.snapshot-process-table {
+  min-width: 640px;
 }
 
 .process-card {

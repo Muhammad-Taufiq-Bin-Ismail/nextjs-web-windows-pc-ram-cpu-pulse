@@ -32,4 +32,6 @@ computer viewing the page. Per-process CPU percentages are normalized across
 logical CPU cores; RAM uses each process's working set and is also shown as a
 percentage of total system memory. Use the historical overview date and time
 pickers to load overall CPU and RAM charts for a selected range; hover over a
-chart to see the sample value and local date/time.
+chart to see the sample value and local date/time. Click a point on either
+historical chart to show all process metrics from the closest retained snapshot
+within five seconds of that sample.

@@ -29,6 +29,11 @@ export type ProcessHistory = {
   }>;
 };
 
+export type ProcessSnapshot = {
+  sampledAt: number | null;
+  processes: ProcessMetric[];
+};
+
 const databasePath = join(process.cwd(), "data", "pc-status.sqlite");
 mkdirSync(dirname(databasePath), { recursive: true });
 
@@ -120,6 +125,24 @@ const latestProcessSamples = database.prepare(`
   WHERE sampled_at = (SELECT MAX(sampled_at) FROM process_snapshots)
   ORDER BY cpu_usage DESC, memory_used_bytes DESC
 `);
+const nearestProcessSnapshot = database.prepare(`
+  SELECT sampled_at AS sampledAt
+  FROM process_snapshots
+  ORDER BY ABS(sampled_at - ?)
+  LIMIT 1
+`);
+const processSamplesAt = database.prepare(`
+  SELECT
+    pid,
+    task_name AS name,
+    started_at AS startedAt,
+    cpu_usage AS cpuUsage,
+    memory_used_bytes AS memoryUsedBytes,
+    memory_usage AS memoryUsage
+  FROM process_samples
+  WHERE sampled_at = ?
+  ORDER BY cpu_usage DESC, memory_used_bytes DESC
+`);
 const latestProcessHistory = database.prepare(`
   SELECT
     history.sampled_at AS sampledAt,
@@ -198,6 +221,23 @@ export function getMetricSamplesBetween(
 /** Returns per-process metrics from the latest recorded snapshot. */
 export function getLatestProcessSamples(): ProcessMetric[] {
   return latestProcessSamples.all() as ProcessMetric[];
+}
+
+/** Finds the nearest process snapshot when it is within the allowed five seconds. */
+export function getProcessSnapshotNear(
+  sampledAt: number,
+  toleranceMs = 5_000,
+): ProcessSnapshot {
+  const snapshot = nearestProcessSnapshot.get(sampledAt) as
+    | { sampledAt: number }
+    | undefined;
+  if (!snapshot || Math.abs(snapshot.sampledAt - sampledAt) > toleranceMs) {
+    return { sampledAt: null, processes: [] };
+  }
+  return {
+    sampledAt: snapshot.sampledAt,
+    processes: processSamplesAt.all(snapshot.sampledAt) as ProcessMetric[],
+  };
 }
 
 /** Returns per-process CPU and RAM history from the latest snapshots. */
