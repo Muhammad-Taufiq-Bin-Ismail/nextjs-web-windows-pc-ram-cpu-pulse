@@ -11,6 +11,8 @@ type MetricChartProps = {
   }>;
   onSampleClick?: (sample: { sampledAt: number; value: number }) => void;
   onSelectRange?: (range: { start: number; end: number }) => void;
+  linkedSampledAt?: number | null;
+  onHoverSample?: (sampledAt: number | null) => void;
 };
 
 const chartWidth = 900;
@@ -26,6 +28,8 @@ export function MetricChart({
   samples,
   onSampleClick,
   onSelectRange,
+  linkedSampledAt,
+  onHoverSample,
 }: MetricChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [dragSelection, setDragSelection] = useState<[number, number] | null>(
@@ -51,10 +55,20 @@ export function MetricChart({
     const y = padding.top + (1 - sample.value / 100) * plotHeight;
     return `${x},${y}`;
   });
+  const activeIndex =
+    linkedSampledAt === undefined
+      ? hoveredIndex
+      : linkedSampledAt === null
+        ? null
+        : samples.findIndex((sample) => sample.sampledAt === linkedSampledAt);
   const hoveredPoint =
-    hoveredIndex === null ? null : samples[hoveredIndex] ?? null;
+    activeIndex === null || activeIndex < 0
+      ? null
+      : samples[activeIndex] ?? null;
   const hoveredCoordinates =
-    hoveredIndex === null ? null : points[hoveredIndex]?.split(",").map(Number);
+    activeIndex === null || activeIndex < 0
+      ? null
+      : points[activeIndex]?.split(",").map(Number);
 
   return (
     <div className="chart-wrap">
@@ -74,8 +88,8 @@ export function MetricChart({
             didDrag.current = false;
             return;
           }
-          if (hoveredIndex !== null && onSampleClick) {
-            onSampleClick(samples[hoveredIndex]);
+          if (activeIndex !== null && activeIndex >= 0 && onSampleClick) {
+            onSampleClick(samples[activeIndex]);
           }
         }}
         onPointerDown={(event) => {
@@ -94,6 +108,7 @@ export function MetricChart({
           const bounds = event.currentTarget.getBoundingClientRect();
           const index = getIndexAtPointer(event.clientX, bounds);
           setHoveredIndex(index);
+          onHoverSample?.(index === null ? null : samples[index].sampledAt);
           if (index !== null && dragStartIndex.current !== null) {
             setDragSelection([dragStartIndex.current, index]);
             if (Math.abs(dragStartIndex.current - index) > 0) {
@@ -126,7 +141,10 @@ export function MetricChart({
           setDragSelection(null);
         }}
         onPointerLeave={() => {
-          if (dragStartIndex.current === null) setHoveredIndex(null);
+          if (dragStartIndex.current === null) {
+            setHoveredIndex(null);
+            onHoverSample?.(null);
+          }
         }}
       >
         {[0, 25, 50, 75, 100].map((value) => {

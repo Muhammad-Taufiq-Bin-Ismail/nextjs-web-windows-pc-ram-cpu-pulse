@@ -89,6 +89,12 @@ export default function DashboardPage() {
   const [rangeEndDate, setRangeEndDate] = useState("");
   const [rangeEndTime, setRangeEndTime] = useState("");
   const [rangeSamples, setRangeSamples] = useState<MetricSample[]>([]);
+  const [liveHoveredSampledAt, setLiveHoveredSampledAt] = useState<
+    number | null
+  >(null);
+  const [rangeHoveredSampledAt, setRangeHoveredSampledAt] = useState<
+    number | null
+  >(null);
   const [rangeLoading, setRangeLoading] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [selectedChartSample, setSelectedChartSample] =
@@ -468,6 +474,8 @@ export default function DashboardPage() {
           <MetricChart
             color="#7c6cf2"
             label="CPU"
+            linkedSampledAt={liveHoveredSampledAt}
+            onHoverSample={setLiveHoveredSampledAt}
             samples={chartSamples("cpuUsage")}
           />
           <div className="chart-legend">
@@ -490,6 +498,8 @@ export default function DashboardPage() {
           <MetricChart
             color="#18b89a"
             label="RAM"
+            linkedSampledAt={liveHoveredSampledAt}
+            onHoverSample={setLiveHoveredSampledAt}
             samples={chartSamples("memoryUsage")}
           />
           <div className="chart-legend">
@@ -586,6 +596,8 @@ export default function DashboardPage() {
             <MetricChart
               color="#7c6cf2"
               label="CPU"
+              linkedSampledAt={rangeHoveredSampledAt}
+              onHoverSample={setRangeHoveredSampledAt}
               onSampleClick={(point) => {
                 const sample = rangeSamples.find(
                   (item) => item.sampledAt === point.sampledAt,
@@ -613,6 +625,8 @@ export default function DashboardPage() {
             <MetricChart
               color="#18b89a"
               label="RAM"
+              linkedSampledAt={rangeHoveredSampledAt}
+              onHoverSample={setRangeHoveredSampledAt}
               onSampleClick={(point) => {
                 const sample = rangeSamples.find(
                   (item) => item.sampledAt === point.sampledAt,
