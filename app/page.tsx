@@ -38,7 +38,7 @@ type MetricsResponse = {
   lastUpdated: number | null;
 };
 
-type ProcessSortColumn = "name" | "pid" | "cpuUsage";
+type ProcessSortColumn = "name" | "pid" | "cpuUsage" | "memoryUsedBytes" | "memoryUsage";
 type SortDirection = "ascending" | "descending";
 
 /** Formats a byte count as gibibytes for the dashboard. */
@@ -121,14 +121,18 @@ export default function DashboardPage() {
       });
     } else if (sortColumn === "pid") {
       comparison = left.pid - right.pid;
-    } else {
+    } else if (sortColumn === "cpuUsage") {
       comparison = left.cpuUsage - right.cpuUsage;
+    } else if (sortColumn === "memoryUsedBytes") {
+      comparison = left.memoryUsedBytes - right.memoryUsedBytes;
+    } else {
+      comparison = left.memoryUsage - right.memoryUsage;
     }
     return sortDirection === "ascending" ? comparison : -comparison;
   });
 
   /** Sorts the selected process column, toggling direction on repeated clicks. */
-  const changeProcessSort = (column: "name" | "pid") => {
+  const changeProcessSort = (column: ProcessSortColumn) => {
     if (sortColumn === column) {
       setSortDirection((direction) =>
         direction === "ascending" ? "descending" : "ascending",
@@ -324,9 +328,34 @@ export default function DashboardPage() {
                     )}
                   </button>
                 </th>
-                <th scope="col">CPU</th>
-                <th scope="col">RAM</th>
-                <th scope="col">RAM %</th>
+                {(
+                  [
+                    ["cpuUsage", "CPU"],
+                    ["memoryUsedBytes", "RAM"],
+                    ["memoryUsage", "RAM %"],
+                  ] as const
+                ).map(([column, label]) => (
+                  <th
+                    key={column}
+                    aria-sort={
+                      sortColumn === column ? sortDirection : "none"
+                    }
+                    scope="col"
+                  >
+                    <button
+                      className="process-sort-button"
+                      onClick={() => changeProcessSort(column)}
+                      type="button"
+                    >
+                      {label}
+                      {sortColumn === column && (
+                        <span aria-hidden="true">
+                          {sortDirection === "ascending" ? " ↑" : " ↓"}
+                        </span>
+                      )}
+                    </button>
+                  </th>
+                ))}
                 <th scope="col">CPU trend</th>
                 <th scope="col">RAM trend</th>
               </tr>
