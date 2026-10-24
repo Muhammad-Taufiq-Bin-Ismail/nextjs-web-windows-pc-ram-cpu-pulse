@@ -295,7 +295,7 @@ export function saveMetricSample(
 /** Returns the most recent CPU speed threshold-crossing events. */
 export function getLatestCpuSpeedAlerts(
   thresholdGhz: number,
-  limit = 100,
+  limit = 10,
 ): CpuSpeedAlert[] {
   if (!backfilledAlertThresholds.has(thresholdGhz)) {
     backfillCpuSpeedAlerts.run(thresholdGhz, thresholdGhz, thresholdGhz);
