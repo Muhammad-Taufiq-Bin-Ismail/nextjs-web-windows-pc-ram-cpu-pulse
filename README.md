@@ -49,6 +49,6 @@ hour or a configurable number of minutes. Click a process PID to open a history
 popover with selectable date/time controls, CPU/RAM charts, and task-name
 observations showing the first and last time each name appeared for that PID.
 PID history charts also show an estimated CPU speed calculated as the overall
-CPU speed divided by that process's CPU usage fraction. The estimate is
+CPU speed multiplied by that process's CPU usage fraction. The estimate is
 unavailable when the process CPU usage is zero.
 Per-process history is retained for one hour.

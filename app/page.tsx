@@ -14,12 +14,12 @@ type MetricSample = {
   memoryTotalBytes: number;
 };
 
-/** Estimates per-process CPU speed using overall speed divided by CPU fraction. */
+/** Estimates per-process CPU speed using overall speed times CPU usage fraction. */
 function estimateProcessCpuSpeedGhz(sample: ProcessHistoryPoint): number | null {
   if (sample.cpuUsage <= 0 || sample.cpuSpeedMhz <= 0) {
     return null;
   }
-  return sample.cpuSpeedMhz / 1_000 / (sample.cpuUsage / 100);
+  return (sample.cpuSpeedMhz / 1_000) * (sample.cpuUsage / 100);
 }
 
 type ProcessMetric = {
@@ -1283,7 +1283,7 @@ export default function DashboardPage() {
             ) : (
               <>
                 <p className="process-description">
-                  Estimated CPU speed = overall CPU speed ÷ process CPU usage
+                  Estimated CPU speed = overall CPU speed × process CPU usage
                   fraction; unavailable when process CPU usage is zero.
                 </p>
                 <div className="process-table-wrap name-history-wrap">
