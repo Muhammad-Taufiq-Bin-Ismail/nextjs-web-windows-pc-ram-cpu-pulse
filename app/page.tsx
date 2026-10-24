@@ -630,6 +630,10 @@ export default function DashboardPage() {
             <span className="stat-label">CPU speed</span>
             <span className="stat-indicator speed-indicator" />
           </div>
+          
+              <span>Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz (2.30 GHz)</span>
+              <br/>
+              <span>4 Cores, 8 Logical Processors</span>
           <div className="stat-value">
             {latestSample
               ? (latestSample.cpuSpeedMhz / 1_000).toFixed(2)
