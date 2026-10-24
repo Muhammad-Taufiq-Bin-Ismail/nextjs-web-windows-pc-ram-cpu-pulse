@@ -205,10 +205,11 @@ export function saveMetricSample(sample: MetricSample): void {
   console.log(`Saved metric sample: ${JSON.stringify(sample)}`);
 }
 
-/** Saves one complete process snapshot and removes snapshots older than 15 minutes. */
+/** Saves one process snapshot and removes data older than the retention period. */
 export function saveProcessSamples(
   sampledAt: number,
   samples: ProcessMetric[],
+  retentionMs = 15 * 60 * 1_000,
 ): void {
   database.exec("BEGIN");
   try {
@@ -224,7 +225,7 @@ export function saveProcessSamples(
         sample.memoryUsage,
       );
     }
-    const retentionCutoff = sampledAt - 15 * 60 * 1_000;
+    const retentionCutoff = sampledAt - retentionMs;
     deleteOldProcessSamples.run(retentionCutoff);
     deleteOldProcessSnapshots.run(retentionCutoff);
     database.exec("COMMIT");

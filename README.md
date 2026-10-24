@@ -25,7 +25,7 @@ dashboard refreshes every 5 seconds, displays up to 120 system samples, and list
 the latest snapshot of all running processes, sorted by CPU usage. Task name and
 PID columns can be sorted by clicking their headers. Each process row includes
 CPU and RAM trend charts with up to 120 points. Per-process snapshots are
-retained for 15 minutes. The SQLite file is stored at `data/pc-status.sqlite`.
+retained for one hour. The SQLite file is stored at `data/pc-status.sqlite`.
 Use the dashboard header toggle to switch between light and dark themes; the
 selected theme is saved in browser local storage.
 
@@ -41,7 +41,11 @@ The selected process snapshot table can be sorted by every column. Hovering on
 either system chart shows both CPU and RAM values for that sample. Drag across a
 historical chart to highlight and zoom into that time range; the date and time
 controls update to match the selected zone.
-System samples also record processor clock speed in MHz from Windows CIM.
-Click a process PID to open a history popover with selectable date/time controls
-and CPU/RAM charts for that process instance. Per-process history is available
-for the same 15-minute retention window.
+System samples also record real-time processor clock speed in MHz using Windows
+performance counters and the hardware maximum from CIM.
+CPU speed is shown in the live summary, history chart, and chart tooltips.
+Historical overview and PID history include quick-range controls for the last
+hour or a configurable number of minutes. Click a process PID to open a history
+popover with selectable date/time controls, CPU/RAM charts, and task-name
+observations showing the first and last time each name appeared for that PID.
+Per-process history is retained for one hour.

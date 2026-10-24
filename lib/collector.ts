@@ -8,6 +8,7 @@ import {
 } from "./database";
 
 const SAMPLE_INTERVAL_MS = 3_000;
+const PROCESS_SAMPLE_RETENTION_MS = 60 * 60 * 1_000;
 const execFileAsync = promisify(execFile);
 const collectorGlobal = globalThis as typeof globalThis & {
   pcStatusCollectorStarted?: boolean;
@@ -207,7 +208,7 @@ export function startMetricsCollector(): void {
         });
       previousProcessSamples = currentProcessSamples;
       previousProcessSampleAt = sampledAt;
-      saveProcessSamples(sampledAt, processMetrics);
+      saveProcessSamples(sampledAt, processMetrics, PROCESS_SAMPLE_RETENTION_MS);
     } catch (error) {
       console.error("Failed to collect or save system/process metrics:", error);
     } finally {

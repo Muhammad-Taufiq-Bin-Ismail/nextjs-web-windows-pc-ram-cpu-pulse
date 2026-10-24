@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { MetricChart } from "./components/MetricChart";
 import { ProcessSparkline } from "./components/ProcessSparkline";
+import { QuickRangeControls } from "./components/QuickRangeControls";
 
 type MetricSample = {
   sampledAt: number;
@@ -77,6 +78,30 @@ function formatLocalTime(date: Date): string {
   const minutes = String(date.getMinutes()).padStart(2, "0");
   const seconds = String(date.getSeconds()).padStart(2, "0");
   return `${hours}:${minutes}:${seconds}`;
+}
+
+/** Groups a process's observations by task name and records its first and last seen times. */
+function getProcessNameObservations(samples: ProcessHistoryPoint[]) {
+  const observations = new Map<
+    string,
+    { name: string; firstSeen: number; lastSeen: number }
+  >();
+  for (const sample of samples) {
+    const observation = observations.get(sample.name);
+    if (observation) {
+      observation.firstSeen = Math.min(observation.firstSeen, sample.sampledAt);
+      observation.lastSeen = Math.max(observation.lastSeen, sample.sampledAt);
+    } else {
+      observations.set(sample.name, {
+        name: sample.name,
+        firstSeen: sample.sampledAt,
+        lastSeen: sample.sampledAt,
+      });
+    }
+  }
+  return Array.from(observations.values()).sort(
+    (left, right) => left.firstSeen - right.firstSeen,
+  );
 }
 
 /** Renders the live CPU and memory monitoring dashboard. */
@@ -201,10 +226,13 @@ export default function DashboardPage() {
 
   const latestSample = data.samples.at(-1);
   /** Converts samples into the chart's timestamp-and-value format. */
-  const chartSamples = (key: "cpuUsage" | "memoryUsage") =>
+  const chartSamples = (key: "cpuUsage" | "memoryUsage" | "cpuSpeedMhz") =>
     data.samples.map((sample) => ({
       sampledAt: sample.sampledAt,
-      value: sample[key],
+      value:
+        key === "cpuSpeedMhz"
+          ? sample.cpuSpeedMhz / 1_000
+          : sample[key],
       cpuUsage: sample.cpuUsage,
       memoryUsage: sample.memoryUsage,
       cpuSpeedMhz: sample.cpuSpeedMhz,
@@ -428,10 +456,10 @@ export default function DashboardPage() {
     }
   };
 
-  /** Opens the process history popover with the latest 15 minutes selected. */
+  /** Opens process history with the latest hour selected. */
   const openProcessHistory = (process: ProcessMetric) => {
     const endDate = new Date();
-    const startDate = new Date(endDate.getTime() - 15 * 60 * 1_000);
+    const startDate = new Date(endDate.getTime() - 60 * 60 * 1_000);
     setHistoryProcess(process);
     setProcessHistory([]);
     setProcessHistoryStartDate(formatLocalDate(startDate));
@@ -470,6 +498,22 @@ export default function DashboardPage() {
       return;
     }
     await fetchProcessHistory(historyProcess, startTime, endTime);
+  };
+
+  /** Applies a quick process-history duration and synchronizes its date controls. */
+  const applyProcessQuickRange = (durationMs: number) => {
+    if (!historyProcess) return;
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - durationMs);
+    setProcessHistoryStartDate(formatLocalDate(startDate));
+    setProcessHistoryStartTime(formatLocalTime(startDate));
+    setProcessHistoryEndDate(formatLocalDate(endDate));
+    setProcessHistoryEndTime(formatLocalTime(endDate));
+    void fetchProcessHistory(
+      historyProcess,
+      startDate.getTime(),
+      endDate.getTime(),
+    );
   };
 
   /** Closes the process history popover and ignores any pending request. */
@@ -571,9 +615,26 @@ export default function DashboardPage() {
             />
           </div>
         </article>
+        <article className="stat-card">
+          <div className="stat-card-heading">
+            <span className="stat-icon speed-icon">GHz</span>
+            <span className="stat-label">CPU speed</span>
+            <span className="stat-indicator speed-indicator" />
+          </div>
+          <div className="stat-value">
+            {latestSample
+              ? (latestSample.cpuSpeedMhz / 1_000).toFixed(2)
+              : "--"}
+            <span>GHz</span>
+          </div>
+          <div className="stat-foot">
+            <span>Real-time processor clock</span>
+            <span>All cores</span>
+          </div>
+        </article>
       </section>
 
-      <section aria-label="Usage history" className="charts-grid">
+      <section aria-label="Usage history" className="charts-grid metric-charts-grid">
         <article className="chart-card">
           <div className="chart-heading">
             <div>
@@ -621,6 +682,32 @@ export default function DashboardPage() {
             <span className="chart-period">Last 6 minutes</span>
           </div>
         </article>
+        <article className="chart-card">
+          <div className="chart-heading">
+            <div>
+              <p className="eyebrow">PROCESSOR</p>
+              <h2>CPU speed</h2>
+            </div>
+            <span className="chart-current cpu-text">
+              {latestSample
+                ? `${(latestSample.cpuSpeedMhz / 1_000).toFixed(2)} GHz`
+                : "--"}
+            </span>
+          </div>
+          <MetricChart
+            color="#e59d38"
+            label="CPU speed"
+            linkedSampledAt={liveHoveredSampledAt}
+            onHoverSample={setLiveHoveredSampledAt}
+            samples={chartSamples("cpuSpeedMhz")}
+            valueUnit="ghz"
+          />
+          <div className="chart-legend">
+            <span className="legend-dot speed-dot" />
+            Clock speed
+            <span className="chart-period">Last 6 minutes</span>
+          </div>
+        </article>
       </section>
 
       <section aria-label="Custom CPU and RAM history" className="range-card">
@@ -631,10 +718,16 @@ export default function DashboardPage() {
           </div>
         </div>
         <p className="range-description">
-          Choose local start and end dates and times to view overall system CPU
-          and RAM usage. Drag across either chart to zoom into a time range, or
-          click a chart point to see its process snapshot.
+          Choose a quick range or local start and end dates and times to view
+          overall system CPU, CPU speed, and RAM usage. Drag across a chart to
+          zoom into a time range, or click a point to see its process snapshot.
         </p>
+        <QuickRangeControls
+          onApply={(durationMs) => {
+            const endTime = Date.now();
+            void applyRange(endTime - durationMs, endTime);
+          }}
+        />
         <form className="range-form" onSubmit={loadRangeSamples}>
           <fieldset className="range-fieldset">
             <legend>Start</legend>
@@ -698,7 +791,7 @@ export default function DashboardPage() {
             ? `${rangeSamples.length.toLocaleString()} samples in selected range`
             : "No samples loaded for the selected range"}
         </p>
-        <div className="charts-grid range-charts">
+        <div className="charts-grid metric-charts-grid range-charts">
           <article className="chart-card">
             <div className="chart-heading">
               <div>
@@ -759,6 +852,31 @@ export default function DashboardPage() {
               }))}
             />
           </article>
+          <article className="chart-card">
+            <div className="chart-heading">
+              <div>
+                <p className="eyebrow">OVERALL SYSTEM</p>
+                <h2>CPU speed</h2>
+              </div>
+            </div>
+            <MetricChart
+              color="#e59d38"
+              label="CPU speed"
+              linkedSampledAt={rangeHoveredSampledAt}
+              onHoverSample={setRangeHoveredSampledAt}
+              onSelectRange={(range) => {
+                void applyRange(range.start, range.end);
+              }}
+              samples={rangeSamples.map((sample) => ({
+                sampledAt: sample.sampledAt,
+                value: sample.cpuSpeedMhz / 1_000,
+                cpuUsage: sample.cpuUsage,
+                memoryUsage: sample.memoryUsage,
+                cpuSpeedMhz: sample.cpuSpeedMhz,
+              }))}
+              valueUnit="ghz"
+            />
+          </article>
         </div>
         {selectedChartSample && (
           <section
@@ -801,7 +919,7 @@ export default function DashboardPage() {
               selectedProcessSnapshot?.sampledAt === null && (
                 <p className="snapshot-message">
                   No process snapshot is available near this time. Process
-                  snapshots are retained for 15 minutes.
+                  snapshots are retained for one hour.
                 </p>
               )}
             {!processSnapshotLoading &&
@@ -1068,6 +1186,10 @@ export default function DashboardPage() {
               className="range-form process-history-form"
               onSubmit={loadSelectedProcessHistory}
             >
+              <QuickRangeControls
+                maxMinutes={60}
+                onApply={applyProcessQuickRange}
+              />
               <fieldset className="range-fieldset">
                 <legend>Start</legend>
                 <label>
@@ -1133,7 +1255,8 @@ export default function DashboardPage() {
               </button>
             </form>
             <p className="process-description history-retention-note">
-              Process history is retained for 15 minutes.
+              Process history is retained for one hour. Minute ranges are
+              configurable up to 60 minutes.
             </p>
             {processHistoryError && (
               <p className="range-error" role="alert">
@@ -1149,44 +1272,72 @@ export default function DashboardPage() {
                 No samples for this process in the selected range.
               </p>
             ) : (
-              <div className="process-history-charts">
-                <article className="chart-card">
-                  <div className="chart-heading">
-                    <div>
-                      <p className="eyebrow">PROCESS CPU</p>
-                      <h2>CPU usage</h2>
+              <>
+                <div className="process-table-wrap name-history-wrap">
+                  <table className="process-table name-history-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Task name</th>
+                        <th scope="col">First date/time noticed</th>
+                        <th scope="col">Last date/time noticed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getProcessNameObservations(processHistory).map(
+                        (observation) => (
+                          <tr key={observation.name}>
+                            <td className="process-name">{observation.name}</td>
+                            <td>
+                              {new Date(observation.firstSeen).toLocaleString()}
+                            </td>
+                            <td>
+                              {new Date(observation.lastSeen).toLocaleString()}
+                            </td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="process-history-charts">
+                  <article className="chart-card">
+                    <div className="chart-heading">
+                      <div>
+                        <p className="eyebrow">PROCESS CPU</p>
+                        <h2>CPU usage</h2>
+                      </div>
                     </div>
-                  </div>
-                  <MetricChart
-                    color="#7c6cf2"
-                    label="CPU"
-                    samples={processHistory.map((sample) => ({
-                      sampledAt: sample.sampledAt,
-                      value: sample.cpuUsage,
-                      cpuUsage: sample.cpuUsage,
-                      memoryUsage: sample.memoryUsage,
-                    }))}
-                  />
-                </article>
-                <article className="chart-card">
-                  <div className="chart-heading">
-                    <div>
-                      <p className="eyebrow">PROCESS RAM</p>
-                      <h2>RAM usage</h2>
+                    <MetricChart
+                      color="#7c6cf2"
+                      label="CPU"
+                      samples={processHistory.map((sample) => ({
+                        sampledAt: sample.sampledAt,
+                        value: sample.cpuUsage,
+                        cpuUsage: sample.cpuUsage,
+                        memoryUsage: sample.memoryUsage,
+                      }))}
+                    />
+                  </article>
+                  <article className="chart-card">
+                    <div className="chart-heading">
+                      <div>
+                        <p className="eyebrow">PROCESS RAM</p>
+                        <h2>RAM usage</h2>
+                      </div>
                     </div>
-                  </div>
-                  <MetricChart
-                    color="#18b89a"
-                    label="RAM"
-                    samples={processHistory.map((sample) => ({
-                      sampledAt: sample.sampledAt,
-                      value: sample.memoryUsage,
-                      cpuUsage: sample.cpuUsage,
-                      memoryUsage: sample.memoryUsage,
-                    }))}
-                  />
-                </article>
-              </div>
+                    <MetricChart
+                      color="#18b89a"
+                      label="RAM"
+                      samples={processHistory.map((sample) => ({
+                        sampledAt: sample.sampledAt,
+                        value: sample.memoryUsage,
+                        cpuUsage: sample.cpuUsage,
+                        memoryUsage: sample.memoryUsage,
+                      }))}
+                    />
+                  </article>
+                </div>
+              </>
             )}
           </section>
         </div>

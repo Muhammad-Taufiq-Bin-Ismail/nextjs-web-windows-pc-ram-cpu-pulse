@@ -10,6 +10,7 @@ type MetricChartProps = {
     memoryUsage: number;
     cpuSpeedMhz?: number;
   }>;
+  valueUnit?: "percent" | "ghz";
   onSampleClick?: (sample: { sampledAt: number; value: number }) => void;
   onSelectRange?: (range: { start: number; end: number }) => void;
   linkedSampledAt?: number | null;
@@ -21,12 +22,14 @@ const chartHeight = 250;
 const padding = { top: 16, right: 18, bottom: 34, left: 42 };
 const plotWidth = chartWidth - padding.left - padding.right;
 const plotHeight = chartHeight - padding.top - padding.bottom;
+const axisSteps = [0, 25, 50, 75, 100];
 
 /** Renders resource usage samples as a responsive SVG line chart. */
 export function MetricChart({
   color,
   label,
   samples,
+  valueUnit = "percent",
   onSampleClick,
   onSelectRange,
   linkedSampledAt,
@@ -49,11 +52,15 @@ export function MetricChart({
       ? Math.round(pointRatio * (samples.length - 1))
       : null;
   };
+  const maxValue =
+    valueUnit === "ghz"
+      ? Math.max(1, Math.ceil(Math.max(...samples.map((sample) => sample.value), 0)))
+      : 100;
   const points = samples.map((sample, index) => {
     const x =
       padding.left +
       (samples.length > 1 ? (index / (samples.length - 1)) * plotWidth : 0);
-    const y = padding.top + (1 - sample.value / 100) * plotHeight;
+    const y = padding.top + (1 - sample.value / maxValue) * plotHeight;
     return `${x},${y}`;
   });
   const activeIndex =
@@ -148,8 +155,9 @@ export function MetricChart({
           }
         }}
       >
-        {[0, 25, 50, 75, 100].map((value) => {
-          const y = padding.top + (1 - value / 100) * plotHeight;
+        {axisSteps.map((step) => {
+          const value = (step / 100) * maxValue;
+          const y = padding.top + (1 - step / 100) * plotHeight;
           return (
             <g key={value}>
               <line
@@ -160,7 +168,7 @@ export function MetricChart({
                 y2={y}
               />
               <text className="chart-axis-label" textAnchor="end" x="34" y={y + 4}>
-                {value}%
+                {valueUnit === "ghz" ? `${value.toFixed(1)}` : `${value}%`}
               </text>
             </g>
           );
@@ -241,8 +249,8 @@ export function MetricChart({
       {hoveredPoint && (
         <div className="chart-tooltip" role="status">
           <strong>
-            {label === "CPU" ? "CPU" : "RAM"}:{" "}
-            {hoveredPoint.value.toFixed(2)}%
+            {label}: {hoveredPoint.value.toFixed(2)}
+            {valueUnit === "ghz" ? " GHz" : "%"}
           </strong>
           <span>CPU: {hoveredPoint.cpuUsage.toFixed(2)}%</span>
           <span>RAM: {hoveredPoint.memoryUsage.toFixed(2)}%</span>
