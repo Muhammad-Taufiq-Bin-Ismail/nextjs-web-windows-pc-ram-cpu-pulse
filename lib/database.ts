@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { cpuSpeedThresholdGhz } from "./config";
 
 export type MetricSample = {
   sampledAt: number;
@@ -46,6 +47,7 @@ const databasePath = join(process.cwd(), "data", "pc-status.sqlite");
 mkdirSync(dirname(databasePath), { recursive: true });
 
 const database = new DatabaseSync(databasePath);
+database.exec("PRAGMA busy_timeout = 5000");
 database.exec(`
   CREATE TABLE IF NOT EXISTS metric_samples (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,6 +68,8 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS cpu_speed_alerts_triggered_at
     ON cpu_speed_alerts (triggered_at);
+  CREATE UNIQUE INDEX IF NOT EXISTS cpu_speed_alerts_triggered_threshold
+    ON cpu_speed_alerts (triggered_at, threshold_ghz);
   CREATE TABLE IF NOT EXISTS process_snapshots (
     sampled_at INTEGER PRIMARY KEY
   );
@@ -90,6 +94,25 @@ if (!metricColumns.some((column) => column.name === "cpu_speed_mhz")) {
     "ALTER TABLE metric_samples ADD COLUMN cpu_speed_mhz REAL NOT NULL DEFAULT 0",
   );
 }
+const backfillCpuSpeedAlerts = database.prepare(`
+  INSERT OR IGNORE INTO cpu_speed_alerts (
+    triggered_at, cpu_speed_mhz, threshold_ghz
+  )
+  SELECT sampled_at, cpu_speed_mhz, ?
+  FROM (
+    SELECT
+      sampled_at,
+      cpu_speed_mhz,
+      LAG(cpu_speed_mhz) OVER (ORDER BY sampled_at) AS previous_cpu_speed_mhz
+    FROM metric_samples
+  )
+  WHERE cpu_speed_mhz > ? * 1_000
+    AND (
+      previous_cpu_speed_mhz IS NULL
+      OR previous_cpu_speed_mhz <= ? * 1_000
+    )
+`);
+const backfilledAlertThresholds = new Set<number>();
 
 const insertSample = database.prepare(`
   INSERT INTO metric_samples (
@@ -103,7 +126,7 @@ const latestCpuSpeedSample = database.prepare(`
   LIMIT 1
 `);
 const insertCpuSpeedAlert = database.prepare(`
-  INSERT INTO cpu_speed_alerts (
+  INSERT OR IGNORE INTO cpu_speed_alerts (
     triggered_at, cpu_speed_mhz, threshold_ghz
   ) VALUES (?, ?, ?)
 `);
@@ -114,6 +137,7 @@ const latestCpuSpeedAlerts = database.prepare(`
     cpu_speed_mhz AS cpuSpeedMhz,
     threshold_ghz AS thresholdGhz
   FROM cpu_speed_alerts
+  WHERE cpu_speed_mhz > ? * 1_000
   ORDER BY triggered_at DESC, id DESC
   LIMIT ?
 `);
@@ -269,8 +293,15 @@ export function saveMetricSample(
 }
 
 /** Returns the most recent CPU speed threshold-crossing events. */
-export function getLatestCpuSpeedAlerts(limit = 100): CpuSpeedAlert[] {
-  return latestCpuSpeedAlerts.all(limit) as CpuSpeedAlert[];
+export function getLatestCpuSpeedAlerts(
+  thresholdGhz: number,
+  limit = 100,
+): CpuSpeedAlert[] {
+  if (!backfilledAlertThresholds.has(thresholdGhz)) {
+    backfillCpuSpeedAlerts.run(thresholdGhz, thresholdGhz, thresholdGhz);
+    backfilledAlertThresholds.add(thresholdGhz);
+  }
+  return latestCpuSpeedAlerts.all(thresholdGhz, limit) as CpuSpeedAlert[];
 }
 
 /** Saves one process snapshot and removes data older than the retention period. */

@@ -15,7 +15,7 @@ export function GET() {
   const samples = getLatestMetricSamples();
   const processes = getLatestProcessSamples();
   const processHistory = getLatestProcessHistory(120);
-  const cpuSpeedAlerts = getLatestCpuSpeedAlerts();
+  const cpuSpeedAlerts = getLatestCpuSpeedAlerts(cpuSpeedThresholdGhz);
   return NextResponse.json(
     {
       samples,

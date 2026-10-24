@@ -1,4 +1,4 @@
-const defaultCpuSpeedThresholdGhz = 3.15;
+const defaultCpuSpeedThresholdGhz = 4.15;
 
 /** Reads the configured CPU speed alert threshold in GHz. */
 function readCpuSpeedThresholdGhz(): number {
