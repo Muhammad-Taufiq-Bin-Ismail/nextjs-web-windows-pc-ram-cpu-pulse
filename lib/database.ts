@@ -112,19 +112,22 @@ const metricSamplesBetween = database.prepare(`
 `);
 const processHistoryBetween = database.prepare(`
   SELECT
-    sampled_at AS sampledAt,
-    pid,
-    started_at AS startedAt,
-    task_name AS name,
-    cpu_usage AS cpuUsage,
-    memory_used_bytes AS memoryUsedBytes,
-    memory_usage AS memoryUsage
+    process_samples.sampled_at AS sampledAt,
+    process_samples.pid,
+    process_samples.started_at AS startedAt,
+    process_samples.task_name AS name,
+    process_samples.cpu_usage AS cpuUsage,
+    process_samples.memory_used_bytes AS memoryUsedBytes,
+    process_samples.memory_usage AS memoryUsage,
+    COALESCE(metric_samples.cpu_speed_mhz, 0) AS cpuSpeedMhz
   FROM process_samples
-  WHERE pid = ?
-    AND started_at = ?
-    AND sampled_at >= ?
-    AND sampled_at <= ?
-  ORDER BY sampled_at ASC
+  LEFT JOIN metric_samples
+    ON metric_samples.sampled_at = process_samples.sampled_at
+  WHERE process_samples.pid = ?
+    AND process_samples.started_at = ?
+    AND process_samples.sampled_at >= ?
+    AND process_samples.sampled_at <= ?
+  ORDER BY process_samples.sampled_at ASC
 `);
 
 const insertProcessSnapshot = database.prepare(
@@ -254,13 +257,13 @@ export function getProcessHistoryBetween(
   startedAt: string,
   startTime: number,
   endTime: number,
-): Array<ProcessMetric & { sampledAt: number }> {
+): Array<ProcessMetric & { sampledAt: number; cpuSpeedMhz: number }> {
   return processHistoryBetween.all(
     pid,
     startedAt,
     startTime,
     endTime,
-  ) as Array<ProcessMetric & { sampledAt: number }>;
+  ) as Array<ProcessMetric & { sampledAt: number; cpuSpeedMhz: number }>;
 }
 
 /** Returns per-process metrics from the latest recorded snapshot. */

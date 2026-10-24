@@ -9,6 +9,7 @@ type MetricChartProps = {
     cpuUsage: number;
     memoryUsage: number;
     cpuSpeedMhz?: number;
+    cpuSpeedEstimateGhz?: number | null;
   }>;
   valueUnit?: "percent" | "ghz";
   onSampleClick?: (sample: { sampledAt: number; value: number }) => void;
@@ -256,7 +257,16 @@ export function MetricChart({
           <span>RAM: {hoveredPoint.memoryUsage.toFixed(2)}%</span>
           {hoveredPoint.cpuSpeedMhz !== undefined && (
             <span>
-              CPU speed: {(hoveredPoint.cpuSpeedMhz / 1_000).toFixed(2)} GHz
+              Overall CPU speed:{" "}
+              {(hoveredPoint.cpuSpeedMhz / 1_000).toFixed(2)} GHz
+            </span>
+          )}
+          {hoveredPoint.cpuSpeedEstimateGhz !== undefined && (
+            <span>
+              PID CPU speed estimate:{" "}
+              {hoveredPoint.cpuSpeedEstimateGhz === null
+                ? "N/A"
+                : `${hoveredPoint.cpuSpeedEstimateGhz.toFixed(2)} GHz`}
             </span>
           )}
           <span>{new Date(hoveredPoint.sampledAt).toLocaleString()}</span>
