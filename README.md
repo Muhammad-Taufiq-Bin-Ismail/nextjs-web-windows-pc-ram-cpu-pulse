@@ -29,6 +29,21 @@ retained for one hour. The SQLite file is stored at `data/pc-status.sqlite`.
 Use the dashboard header toggle to switch between light and dark themes; the
 selected theme is saved in browser local storage.
 
+CPU speed exceedance alerts default to 2.15 GHz. Configure the backend threshold
+with `CPU_SPEED_THRESHOLD_GHZ`, for example by setting it in `.env.local`:
+
+```text
+CPU_SPEED_THRESHOLD_GHZ=2.50
+```
+
+The server records an alert when CPU speed crosses from at-or-below the
+threshold to above it. Each alert stores the trigger time, measured CPU speed,
+and threshold in the SQLite database. The dashboard shows the latest 100
+crossings and an active alert while current CPU speed remains above the
+threshold. Enable browser notifications from the dashboard to receive desktop
+notifications for new crossings; the dashboard also displays the alert and
+history in-app.
+
 CPU and RAM values describe the host running the Next.js server, not the
 computer viewing the page. Per-process CPU percentages are normalized across
 logical CPU cores; RAM uses each process's working set and is also shown as a

@@ -6,6 +6,7 @@ import {
   saveProcessSamples,
   type ProcessMetric,
 } from "./database";
+import { cpuSpeedThresholdGhz } from "./config";
 
 const SAMPLE_INTERVAL_MS = 3_000;
 const PROCESS_SAMPLE_RETENTION_MS = 60 * 60 * 1_000;
@@ -170,7 +171,7 @@ export function startMetricsCollector(): void {
         memoryUsage: Number(memoryUsage.toFixed(2)),
         memoryUsedBytes,
         memoryTotalBytes,
-      });
+      }, cpuSpeedThresholdGhz);
 
       const elapsedMs = sampledAt - previousProcessSampleAt;
       const coreCount = Math.max(os.cpus().length, 1);

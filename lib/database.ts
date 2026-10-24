@@ -11,6 +11,13 @@ export type MetricSample = {
   memoryTotalBytes: number;
 };
 
+export type CpuSpeedAlert = {
+  id: number;
+  triggeredAt: number;
+  cpuSpeedMhz: number;
+  thresholdGhz: number;
+};
+
 export type ProcessMetric = {
   pid: number;
   name: string;
@@ -51,6 +58,14 @@ database.exec(`
   );
   CREATE INDEX IF NOT EXISTS metric_samples_sampled_at
     ON metric_samples (sampled_at);
+  CREATE TABLE IF NOT EXISTS cpu_speed_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    triggered_at INTEGER NOT NULL,
+    cpu_speed_mhz REAL NOT NULL,
+    threshold_ghz REAL NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS cpu_speed_alerts_triggered_at
+    ON cpu_speed_alerts (triggered_at);
   CREATE TABLE IF NOT EXISTS process_snapshots (
     sampled_at INTEGER PRIMARY KEY
   );
@@ -80,6 +95,27 @@ const insertSample = database.prepare(`
   INSERT INTO metric_samples (
     sampled_at, cpu_usage, cpu_speed_mhz, memory_usage, memory_used_bytes, memory_total_bytes
   ) VALUES (?, ?, ?, ?, ?, ?)
+`);
+const latestCpuSpeedSample = database.prepare(`
+  SELECT cpu_speed_mhz AS cpuSpeedMhz
+  FROM metric_samples
+  ORDER BY sampled_at DESC
+  LIMIT 1
+`);
+const insertCpuSpeedAlert = database.prepare(`
+  INSERT INTO cpu_speed_alerts (
+    triggered_at, cpu_speed_mhz, threshold_ghz
+  ) VALUES (?, ?, ?)
+`);
+const latestCpuSpeedAlerts = database.prepare(`
+  SELECT
+    id,
+    triggered_at AS triggeredAt,
+    cpu_speed_mhz AS cpuSpeedMhz,
+    threshold_ghz AS thresholdGhz
+  FROM cpu_speed_alerts
+  ORDER BY triggered_at DESC, id DESC
+  LIMIT ?
 `);
 
 const latestSamples = database.prepare(`
@@ -195,17 +231,46 @@ const latestProcessHistory = database.prepare(`
   ORDER BY history.pid, history.started_at, history.sampled_at
 `);
 
-/** Persists one CPU and memory measurement in the local SQLite database. */
-export function saveMetricSample(sample: MetricSample): void {
-  insertSample.run(
-    sample.sampledAt,
-    sample.cpuUsage,
-    sample.cpuSpeedMhz,
-    sample.memoryUsage,
-    sample.memoryUsedBytes,
-    sample.memoryTotalBytes,
-  );
+/** Persists metrics and records a CPU speed alert when the threshold is crossed. */
+export function saveMetricSample(
+  sample: MetricSample,
+  thresholdGhz: number,
+): void {
+  const previousSample = latestCpuSpeedSample.get() as
+    | { cpuSpeedMhz: number }
+    | undefined;
+  database.exec("BEGIN");
+  try {
+    insertSample.run(
+      sample.sampledAt,
+      sample.cpuUsage,
+      sample.cpuSpeedMhz,
+      sample.memoryUsage,
+      sample.memoryUsedBytes,
+      sample.memoryTotalBytes,
+    );
+    const currentSpeedGhz = sample.cpuSpeedMhz / 1_000;
+    if (
+      currentSpeedGhz > thresholdGhz &&
+      (!previousSample || previousSample.cpuSpeedMhz / 1_000 <= thresholdGhz)
+    ) {
+      insertCpuSpeedAlert.run(
+        sample.sampledAt,
+        sample.cpuSpeedMhz,
+        thresholdGhz,
+      );
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
   console.log(`Saved metric sample: ${JSON.stringify(sample)}`);
+}
+
+/** Returns the most recent CPU speed threshold-crossing events. */
+export function getLatestCpuSpeedAlerts(limit = 100): CpuSpeedAlert[] {
+  return latestCpuSpeedAlerts.all(limit) as CpuSpeedAlert[];
 }
 
 /** Saves one process snapshot and removes data older than the retention period. */

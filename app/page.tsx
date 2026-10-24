@@ -14,6 +14,13 @@ type MetricSample = {
   memoryTotalBytes: number;
 };
 
+type CpuSpeedAlert = {
+  id: number;
+  triggeredAt: number;
+  cpuSpeedMhz: number;
+  thresholdGhz: number;
+};
+
 /** Estimates per-process CPU speed using overall speed times CPU usage fraction. */
 function estimateProcessCpuSpeedGhz(sample: ProcessHistoryPoint): number | null {
   if (sample.cpuUsage <= 0 || sample.cpuSpeedMhz <= 0) {
@@ -55,6 +62,8 @@ type MetricsResponse = {
   samples: MetricSample[];
   processes: ProcessMetric[];
   processHistory: ProcessHistory[];
+  cpuSpeedThresholdGhz: number;
+  cpuSpeedAlerts: CpuSpeedAlert[];
   lastUpdated: number | null;
 };
 
@@ -119,10 +128,20 @@ export default function DashboardPage() {
     samples: [],
     processes: [],
     processHistory: [],
+    cpuSpeedThresholdGhz: 2.15,
+    cpuSpeedAlerts: [],
     lastUpdated: null,
   });
   const [theme, setTheme] = useState<Theme>("light");
   const [error, setError] = useState<string | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | "unsupported"
+  >("default");
+  const [notificationError, setNotificationError] = useState<string | null>(
+    null,
+  );
+  const alertBaselineLoaded = useRef(false);
+  const lastHandledAlertId = useRef(0);
   const [rangeStartDate, setRangeStartDate] = useState("");
   const [rangeStartTime, setRangeStartTime] = useState("");
   const [rangeEndDate, setRangeEndDate] = useState("");
@@ -165,6 +184,29 @@ export default function DashboardPage() {
     useState<ProcessSortColumn>("cpuUsage");
   const [snapshotSortDirection, setSnapshotSortDirection] =
     useState<SortDirection>("descending");
+
+  useEffect(() => {
+    if ("Notification" in window) {
+      setNotificationPermission(window.Notification.permission);
+    } else {
+      setNotificationPermission("unsupported");
+    }
+  }, []);
+
+  /** Requests browser permission from the user's explicit button action. */
+  const enableBrowserNotifications = async () => {
+    if (!("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      return;
+    }
+    try {
+      setNotificationPermission(await window.Notification.requestPermission());
+      setNotificationError(null);
+    } catch (cause) {
+      console.error("Unable to request browser notification permission:", cause);
+      setNotificationError("Unable to enable browser notifications.");
+    }
+  };
 
   useEffect(() => {
     try {
@@ -212,6 +254,36 @@ export default function DashboardPage() {
         }
         const result = (await response.json()) as MetricsResponse;
         if (active) {
+          const latestAlertId = result.cpuSpeedAlerts.reduce(
+            (latestId, alert) => Math.max(latestId, alert.id),
+            0,
+          );
+          if (alertBaselineLoaded.current) {
+            const newAlerts = result.cpuSpeedAlerts
+              .filter((alert) => alert.id > lastHandledAlertId.current)
+              .sort((left, right) => left.id - right.id);
+            if (
+              window.Notification?.permission === "granted" &&
+              newAlerts.length > 0
+            ) {
+              for (const alert of newAlerts) {
+                try {
+                  new window.Notification("CPU speed threshold exceeded", {
+                    body: `${(alert.cpuSpeedMhz / 1_000).toFixed(2)} GHz exceeded ${alert.thresholdGhz.toFixed(2)} GHz at ${new Date(alert.triggeredAt).toLocaleString()}.`,
+                  });
+                } catch (cause) {
+                  console.error("Unable to display CPU speed notification:", cause);
+                  break;
+                }
+              }
+            }
+          } else {
+            alertBaselineLoaded.current = true;
+          }
+          lastHandledAlertId.current = Math.max(
+            lastHandledAlertId.current,
+            latestAlertId,
+          );
           setData(result);
           setError(null);
         }
@@ -645,6 +717,82 @@ export default function DashboardPage() {
             <span>All cores</span>
           </div>
         </article>
+      </section>
+
+      <section
+        aria-label="CPU speed threshold notifications"
+        className="alert-history-card"
+      >
+        <div className="alert-heading">
+          <div>
+            <p className="eyebrow">CPU SPEED ALERTS</p>
+            <h2>Threshold: {data.cpuSpeedThresholdGhz.toFixed(2)} GHz</h2>
+          </div>
+          <button
+            className="notification-button"
+            disabled={
+              notificationPermission === "granted" ||
+              notificationPermission === "denied" ||
+              notificationPermission === "unsupported"
+            }
+            onClick={() => void enableBrowserNotifications()}
+            type="button"
+          >
+            {notificationPermission === "granted"
+              ? "Desktop notifications enabled"
+              : notificationPermission === "denied"
+                ? "Notifications blocked in browser"
+                : notificationPermission === "unsupported"
+                  ? "Desktop notifications unavailable"
+                  : "Enable desktop notifications"}
+          </button>
+        </div>
+        <p className="alert-description">
+          Threshold is configured on the server with{" "}
+          <code>CPU_SPEED_THRESHOLD_GHZ</code>; the default is 2.15 GHz.
+        </p>
+        {notificationPermission === "denied" && (
+          <p className="alert-history-empty">
+            Browser notifications are blocked. Allow them for this site in your
+            browser settings to enable desktop alerts.
+          </p>
+        )}
+        {notificationError && (
+          <p className="range-error" role="alert">
+            {notificationError}
+          </p>
+        )}
+        {latestSample &&
+          latestSample.cpuSpeedMhz / 1_000 > data.cpuSpeedThresholdGhz && (
+            <p aria-live="assertive" className="cpu-speed-alert" role="alert">
+              CPU speed is above threshold:{" "}
+              {(latestSample.cpuSpeedMhz / 1_000).toFixed(2)} GHz at{" "}
+              {new Date(latestSample.sampledAt).toLocaleString()}.
+            </p>
+          )}
+        <h3 className="alert-history-title">Exceedance history</h3>
+        {data.cpuSpeedAlerts.length === 0 ? (
+          <p className="alert-history-empty">No threshold exceedances yet.</p>
+        ) : (
+          <div className="alert-history-list" role="table" aria-label="CPU speed exceedance history">
+            <div className="alert-history-row alert-history-header" role="row">
+              <span role="columnheader">Triggered at</span>
+              <span role="columnheader">CPU speed</span>
+              <span role="columnheader">Threshold</span>
+            </div>
+            {data.cpuSpeedAlerts.map((alert) => (
+              <div className="alert-history-row" key={alert.id} role="row">
+                <span role="cell">
+                  {new Date(alert.triggeredAt).toLocaleString()}
+                </span>
+                <span role="cell">
+                  {(alert.cpuSpeedMhz / 1_000).toFixed(2)} GHz
+                </span>
+                <span role="cell">{alert.thresholdGhz.toFixed(2)} GHz</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section aria-label="Usage history" className="charts-grid metric-charts-grid">
