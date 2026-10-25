@@ -988,7 +988,15 @@ export default function DashboardPage() {
                           title={`Started ${process.startedAt || "unknown"}`}
                         >
                           <td className="process-name">{process.name}</td>
-                          <td className="process-pid">{process.pid}</td>
+                          <td className="process-pid">
+                            <button
+                              className="process-pid-button"
+                              onClick={() => openProcessHistory(process)}
+                              type="button"
+                            >
+                              {process.pid}
+                            </button>
+                          </td>
                           <td className="process-cpu">
                             {process.cpuUsage.toFixed(1)}%
                           </td>
