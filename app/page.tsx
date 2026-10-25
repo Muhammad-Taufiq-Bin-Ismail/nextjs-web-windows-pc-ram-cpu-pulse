@@ -142,6 +142,13 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [processorInfo, setProcessorInfo] = useState<ProcessorInfo | null>(null);
   const [processorInfoError, setProcessorInfoError] = useState<string | null>(null);
+  const [selectedAlert, setSelectedAlert] = useState<CpuSpeedAlert | null>(null);
+  const [alertProcessSnapshot, setAlertProcessSnapshot] =
+    useState<ProcessSnapshotResult | null>(null);
+  const [alertSnapshotLoading, setAlertSnapshotLoading] = useState(false);
+  const [alertSnapshotError, setAlertSnapshotError] = useState<string | null>(
+    null,
+  );
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | "unsupported"
   >("default");
@@ -172,6 +179,7 @@ export default function DashboardPage() {
     null,
   );
   const processSnapshotRequestId = useRef(0);
+  const alertSnapshotRequestId = useRef(0);
   const [historyProcess, setHistoryProcess] = useState<ProcessMetric | null>(
     null,
   );
@@ -530,6 +538,48 @@ export default function DashboardPage() {
     }
   };
 
+  /** Loads the process snapshot nearest to a CPU speed alert. */
+  const openAlertProcessSnapshot = async (alert: CpuSpeedAlert) => {
+    const requestId = ++alertSnapshotRequestId.current;
+    setSelectedAlert(alert);
+    setAlertProcessSnapshot(null);
+    setAlertSnapshotError(null);
+    setAlertSnapshotLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/metrics/processes?at=${alert.triggeredAt}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        throw new Error(`Process snapshot request failed (${response.status})`);
+      }
+      const result = (await response.json()) as ProcessSnapshotResult;
+      if (requestId === alertSnapshotRequestId.current) {
+        setAlertProcessSnapshot(result);
+      }
+    } catch (cause) {
+      if (requestId === alertSnapshotRequestId.current) {
+        setAlertSnapshotError(
+          cause instanceof Error
+            ? cause.message
+            : "Unable to load process snapshot.",
+        );
+      }
+    } finally {
+      if (requestId === alertSnapshotRequestId.current) {
+        setAlertSnapshotLoading(false);
+      }
+    }
+  };
+
+  /** Closes the alert snapshot dialog and ignores any pending request. */
+  const closeAlertProcessSnapshot = () => {
+    alertSnapshotRequestId.current += 1;
+    setSelectedAlert(null);
+    setAlertSnapshotLoading(false);
+  };
+
   /** Loads one process instance's retained history for the selected time range. */
   const fetchProcessHistory = async (
     process: ProcessMetric,
@@ -825,7 +875,21 @@ export default function DashboardPage() {
               <span role="columnheader">Threshold</span>
             </div>
             {data.cpuSpeedAlerts.map((alert) => (
-              <div className="alert-history-row" key={alert.id} role="row">
+              <div
+                aria-haspopup="dialog"
+                aria-label={`Show process snapshot for alert at ${new Date(alert.triggeredAt).toLocaleString()}`}
+                className="alert-history-row alert-history-entry"
+                key={alert.id}
+                onClick={() => void openAlertProcessSnapshot(alert)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    void openAlertProcessSnapshot(alert);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
                 <span role="cell">
                   {new Date(alert.triggeredAt).toLocaleString()}
                 </span>
@@ -838,6 +902,114 @@ export default function DashboardPage() {
           </div>
         )}
       </section>
+
+      {selectedAlert && (
+        <div
+          className="process-popover-backdrop"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeAlertProcessSnapshot();
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") closeAlertProcessSnapshot();
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="alert-process-snapshot-title"
+            aria-modal="true"
+            className="process-popover"
+            role="dialog"
+          >
+            <div className="process-popover-heading">
+              <div>
+                <p className="eyebrow">PROCESS SNAPSHOT</p>
+                <h2 id="alert-process-snapshot-title">
+                  Processes at{" "}
+                  {new Date(selectedAlert.triggeredAt).toLocaleString()}
+                </h2>
+                {alertProcessSnapshot?.sampledAt !== null &&
+                  alertProcessSnapshot?.sampledAt !== undefined && (
+                    <p className="process-description">
+                      Snapshot captured{" "}
+                      {new Date(
+                        alertProcessSnapshot.sampledAt,
+                      ).toLocaleTimeString()}
+                    </p>
+                  )}
+              </div>
+              <button
+                aria-label="Close alert process snapshot"
+                className="popover-close"
+                onClick={closeAlertProcessSnapshot}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            {alertSnapshotLoading && (
+              <p aria-live="polite" className="snapshot-message">
+                Loading process usage...
+              </p>
+            )}
+            {alertSnapshotError && (
+              <p className="range-error" role="alert">
+                {alertSnapshotError}
+              </p>
+            )}
+            {!alertSnapshotLoading &&
+              !alertSnapshotError &&
+              alertProcessSnapshot?.sampledAt === null && (
+                <p className="snapshot-message">
+                  No process snapshot is available within 5 seconds of this
+                  alert. Process snapshots are retained for one hour.
+                </p>
+              )}
+            {!alertSnapshotLoading &&
+              !alertSnapshotError &&
+              alertProcessSnapshot?.sampledAt !== null &&
+              alertProcessSnapshot && (
+                <div className="process-table-wrap">
+                  <table className="process-table snapshot-process-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Task name</th>
+                        <th scope="col">PID</th>
+                        <th scope="col">CPU</th>
+                        <th scope="col">RAM</th>
+                        <th scope="col">RAM %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {alertProcessSnapshot.processes.map((process) => (
+                        <tr
+                          key={`${process.pid}-${process.startedAt}`}
+                          title={`Started ${process.startedAt || "unknown"}`}
+                        >
+                          <td className="process-name">{process.name}</td>
+                          <td className="process-pid">{process.pid}</td>
+                          <td className="process-cpu">
+                            {process.cpuUsage.toFixed(1)}%
+                          </td>
+                          <td>{formatProcessMemory(process.memoryUsedBytes)}</td>
+                          <td>{process.memoryUsage.toFixed(2)}%</td>
+                        </tr>
+                      ))}
+                      {alertProcessSnapshot.processes.length === 0 && (
+                        <tr>
+                          <td className="process-empty" colSpan={5}>
+                            No process metrics were recorded in this snapshot.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+          </section>
+        </div>
+      )}
 
       <section aria-label="Usage history" className="charts-grid metric-charts-grid">
         <article className="chart-card">

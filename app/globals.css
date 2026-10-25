@@ -573,6 +573,21 @@ h2 {
   font-weight: 700;
 }
 
+.alert-history-entry {
+  cursor: pointer;
+}
+
+.alert-history-entry:hover {
+  background: #f6f8fb;
+}
+
+.alert-history-entry:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #7c6cf2;
+  outline-offset: -2px;
+}
+
 .range-heading .eyebrow {
   margin-bottom: 5px;
   font-size: 9px;
@@ -1049,6 +1064,10 @@ h2 {
 :root[data-theme="dark"] .alert-history-header {
   background: #202c3b;
   color: #a9b5c5;
+}
+
+:root[data-theme="dark"] .alert-history-entry:hover {
+  background: #202c3b;
 }
 
 :root[data-theme="dark"] .alert-description,

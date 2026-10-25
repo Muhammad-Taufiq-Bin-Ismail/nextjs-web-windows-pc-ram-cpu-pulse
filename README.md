@@ -42,7 +42,8 @@ and threshold in the SQLite database. The dashboard shows the latest 100
 crossings and an active alert while current CPU speed remains above the
 threshold. Enable browser notifications from the dashboard to receive desktop
 notifications for new crossings; the dashboard also displays the alert and
-history in-app.
+history in-app. Click an alert-history row to view the nearest retained process
+snapshot, including task name, PID, CPU, RAM, and RAM percentage.
 
 CPU and RAM values describe the host running the Next.js server, not the
 computer viewing the page. Per-process CPU percentages are normalized across
