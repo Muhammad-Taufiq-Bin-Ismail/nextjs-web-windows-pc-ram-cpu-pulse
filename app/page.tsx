@@ -713,7 +713,15 @@ export default function DashboardPage() {
         </button>
       </header>
 
-      <section className="page-heading">
+      <nav aria-label="Dashboard sections" className="section-nav">
+        <a href="#overview">Overview</a>
+        <a href="#alerts">Alerts</a>
+        <a href="#live-history">Live history</a>
+        <a href="#historical-overview">Historical overview</a>
+        <a href="#process-usage">Process usage</a>
+      </nav>
+
+      <section className="page-heading" id="overview">
         <div>
           <p className="eyebrow">SYSTEM OVERVIEW</p>
           <h1>PC Performance</h1>
@@ -816,6 +824,7 @@ export default function DashboardPage() {
       <section
         aria-label="CPU speed threshold notifications"
         className="alert-history-card"
+        id="alerts"
       >
         <div className="alert-heading">
           <div>
@@ -1019,7 +1028,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <section aria-label="Usage history" className="charts-grid metric-charts-grid">
+      <section
+        aria-label="Usage history"
+        className="charts-grid metric-charts-grid"
+        id="live-history"
+      >
         <article className="chart-card">
           <div className="chart-heading">
             <div>
@@ -1095,7 +1108,11 @@ export default function DashboardPage() {
         </article>
       </section>
 
-      <section aria-label="Custom CPU and RAM history" className="range-card">
+      <section
+        aria-label="Custom CPU and RAM history"
+        className="range-card"
+        id="historical-overview"
+      >
         <div className="range-heading">
           <div>
             <p className="eyebrow">HISTORICAL OVERVIEW</p>
@@ -1381,7 +1398,11 @@ export default function DashboardPage() {
         )}
       </section>
 
-      <section aria-label="Per-process CPU and RAM usage" className="process-card">
+      <section
+        aria-label="Per-process CPU and RAM usage"
+        className="process-card"
+        id="process-usage"
+      >
         <div className="process-heading">
           <div>
             <p className="eyebrow">RUNNING TASKS</p>
