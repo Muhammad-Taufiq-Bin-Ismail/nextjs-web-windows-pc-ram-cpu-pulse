@@ -67,6 +67,12 @@ type MetricsResponse = {
   lastUpdated: number | null;
 };
 
+type ProcessorInfo = {
+  name: string;
+  coreCount: number;
+  logicalProcessorCount: number;
+};
+
 type ProcessSortColumn = "name" | "pid" | "cpuUsage" | "memoryUsedBytes" | "memoryUsage";
 type SortDirection = "ascending" | "descending";
 type Theme = "light" | "dark";
@@ -134,6 +140,8 @@ export default function DashboardPage() {
   });
   const [theme, setTheme] = useState<Theme>("light");
   const [error, setError] = useState<string | null>(null);
+  const [processorInfo, setProcessorInfo] = useState<ProcessorInfo | null>(null);
+  const [processorInfoError, setProcessorInfoError] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | "unsupported"
   >("default");
@@ -191,6 +199,34 @@ export default function DashboardPage() {
     } else {
       setNotificationPermission("unsupported");
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadProcessorInfo = async () => {
+      try {
+        const response = await fetch("/api/system-info", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Processor information request failed (${response.status})`);
+        }
+        const result = (await response.json()) as ProcessorInfo;
+        if (active) {
+          setProcessorInfo(result);
+          setProcessorInfoError(null);
+        }
+      } catch (cause) {
+        console.error("Unable to load processor information:", cause);
+        if (active) {
+          setProcessorInfoError("Unable to load processor information.");
+        }
+      }
+    };
+
+    void loadProcessorInfo();
+    return () => {
+      active = false;
+    };
   }, []);
 
   /** Requests browser permission from the user's explicit button action. */
@@ -702,10 +738,18 @@ export default function DashboardPage() {
             <span className="stat-label">CPU speed</span>
             <span className="stat-indicator speed-indicator" />
           </div>
-          
-              <span>Intel(R) Core(TM) i7-10510U CPU @ 1.80GHz (2.30 GHz)</span>
-              <br/>
-              <span>4 Cores, 8 Logical Processors</span>
+          {processorInfo ? (
+            <>
+              <span>{processorInfo.name}</span>
+              <br />
+              <span>
+                {processorInfo.coreCount} Cores,{" "}
+                {processorInfo.logicalProcessorCount} Logical Processors
+              </span>
+            </>
+          ) : (
+            <span>{processorInfoError ?? "Loading processor information..."}</span>
+          )}
           <div className="stat-value">
             {latestSample
               ? (latestSample.cpuSpeedMhz / 1_000).toFixed(2)

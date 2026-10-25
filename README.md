@@ -57,7 +57,9 @@ either system chart shows both CPU and RAM values for that sample. Drag across a
 historical chart to highlight and zoom into that time range; the date and time
 controls update to match the selected zone.
 System samples also record real-time processor clock speed in MHz using Windows
-performance counters and the hardware maximum from CIM.
+performance counters and the hardware maximum from CIM. The dashboard reads the
+processor model, physical core count, and logical processor count from Windows
+`Win32_Processor` through PowerShell.
 CPU speed is shown in the live summary, history chart, and chart tooltips.
 Historical overview and PID history include quick-range controls for the last
 hour or a configurable number of minutes. Click a process PID to open a history
